@@ -47,6 +47,19 @@ class Slot implements Iterable<WorldCard> {
     return this.cards.length == 0
   }
 
+  card(idx:number) {
+    assert(idx >= 0 && idx < this.cards.length)
+    return this.cards[idx]
+  }
+
+  hasCard(wcard:WorldCard) {
+    return this.cards.some(wc => wc.card.id == wcard.card.id)
+  }
+
+  cardById(idCard:string):WorldCard|undefined {
+    return this.cards.find(wc => wc.card.id == idCard)
+  }
+  
   [Symbol.iterator]():Iterator<WorldCard> {
     return this.cards[Symbol.iterator]()
   }
@@ -58,17 +71,68 @@ class UISlotRoot {
   }
 }
 
-interface UISlot {
+abstract class UISlot {
   readonly element:HTMLElement
-  change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void
+  readonly idSlot:string
+  private readonly app:App
+  
+  constructor(element:HTMLElement, idSlot:string, app:App) {
+    this.element = element
+    this.idSlot = idSlot
+    this.app = app
+  }
+
+  init():void {
+    this.element.addEventListener("dragenter", this.onDragEnter.bind(this))
+    this.element.addEventListener("drop", this.onDrop.bind(this))
+    this.element.addEventListener("dragover", this.onDragOver.bind(this))
+    this.element.addEventListener("dragleave", this.onDragLeave.bind(this))
+  }
+  
+  abstract change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void
+  
+  onDragEnter(e:DragEvent) {
+    e.preventDefault()
+    this.element.classList.add("dragged-over")
+  }
+  
+  onDragOver(e:DragEvent) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+  }
+
+  onDrop(e:DragEvent) {
+    e.preventDefault()
+    this.element.classList.remove("dragged-over")
+    const dragData = e.dataTransfer.getData("application/json")
+    console.debug(JSON.stringify(dragData))
+    if (dragData) {
+      const msg = JSON.parse(dragData)
+      const cardSrc = this.app.playfieldGet().card(msg.card.id)
+      const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
+      const slotDst = this.app.playfieldGet().slot(this.idSlot)
+      const slotSrc_ = slotSrc.remove([cardSrc])
+      const slotDst_ = slotDst.add([cardSrc])
+      this.app.playfieldMutate(
+        this.app.playfieldGet().slotsUpdate([slotSrc_, slotDst_])
+      )
+      this.app.notifierSlot.events[slotSrc.id].dispatchEvent(new EventSlotChange(slotSrc, slotSrc_))
+      this.app.notifierSlot.events[slotDst.id].dispatchEvent(new EventSlotChange(slotDst, slotDst_))
+    }
+  }
+  
+  onDragLeave(e:DragEvent) {
+    e.preventDefault()
+    this.element.classList.remove("dragged-over")
+  }
 }
 
-class UISlotSingle implements UISlot {
+class UISlotSingle extends UISlot {
   readonly element:HTMLElement
   
-  constructor(height:string,width='100%') {
-    this.element = document.createElement("div")
-    this.element.setAttribute("style", `display: inline-block; width: ${width}; height: ${height}; border: 1px black`)
+  constructor(idSlot:string, app:App, height:string, width='100%') {
+    super(document.createElement("div"), idSlot, app)
+    this.element.setAttribute("style", `display: inline-block; width: ${width}; min-height: ${height}; border: 1px black`)
   }
 
   change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
@@ -78,11 +142,12 @@ class UISlotSingle implements UISlot {
   }
 }
 
-class UISlotFullWidth implements UISlot {
+class UISlotFullWidth extends UISlot {
   readonly element:HTMLElement
-  constructor(height:string, width='100%') {
-    this.element = document.createElement("div")
-    this.element.setAttribute("style", `display: inline-block; width: ${width}; height: ${height}; border: 1px black`)
+  
+  constructor(idSlot:string, app:App, height:string, width='100%') {
+    super(document.createElement("div"), idSlot, app)
+    this.element.setAttribute("style", `display: inline-block; width: ${width}; min-height: ${height}; border: 1px black`)
   }
 
   change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
@@ -104,6 +169,7 @@ class UICard {
     this.element.setAttribute("style", "display: inline-block")
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    svg.setAttribute('draggable', "false")
     this.element.appendChild(svg)
     
     const use = document.createElementNS("http://www.w3.org/2000/svg", "use")
@@ -120,9 +186,12 @@ class UICard {
     svg.setAttribute('height', '112')
     
     this.element.setAttribute("draggable", "true")
-    this.element.addEventListener("ondragstart", this.onDragStart.bind(this))
-    this.element.addEventListener("ondrag", this.onDrag.bind(this))
-    this.element.addEventListener("ondragend", this.onDragEnd.bind(this))
+    this.element.addEventListener("dragstart", this.onDragStart.bind(this))
+//    this.element.addEventListener("drag", this.onDrag.bind(this))
+    this.element.addEventListener("dragend", this.onDragEnd.bind(this))
+
+    this.element.addEventListener("dragenter", this.onDragEnter.bind(this))
+    this.element.addEventListener("dragleave", this.onDragLeave.bind(this))
   }
 
   detach() {
@@ -136,12 +205,24 @@ class UICard {
 
   private onDragStart(e:DragEvent) {
     console.debug("Drag start " + e.clientX + "," + e.clientY)
+    e.dataTransfer.setData("application/json", JSON.stringify(this.wcard.serialize()))
   }
+    
   private onDrag(e:DragEvent) {
-    console.debug("Dragging " + e.clientX + "," + e.clientY)
   }
+    
   private onDragEnd(e:DragEvent) {
     console.debug("Drag end " + e.clientX + ","  +e.clientY)
+  }
+  
+  private onDragEnter(e:DragEvent) {
+    this.element.classList.add("dragged-over")
+    e.preventDefault()
+  }
+
+  private onDragLeave(e:DragEvent) {
+    this.element.classList.remove("dragged-over")
+    e.preventDefault()
   }
 }
 
@@ -160,10 +241,20 @@ enum Color {
 class Card {
   readonly suit:number
   readonly rank:number
+  readonly id:string
     
-  constructor(rank:number, suit:number) {
+  constructor(rank:number, suit:number, id:string) {
     this.suit = suit
     this.rank = rank
+    this.id = id
+  }
+
+  serialize():any {
+    return {
+      suit: this.suit,
+      rank: this.rank,
+      id: this.id
+    }
   }
 }
 
@@ -179,6 +270,13 @@ class WorldCard {
   withFaceUp(faceUp:boolean) {
     return new WorldCard(this.card, faceUp)
   }
+
+  serialize():any {
+    return {
+      card: this.card.serialize(),
+      faceUp: this.faceUp
+    }
+  }
 }
 
 function deck52() {
@@ -186,7 +284,7 @@ function deck52() {
   
   for (let suit = 0; suit < 4; ++suit) {
     for (let rank = 0; rank < 12; ++rank) {
-      result.push(new Card(rank, suit))
+      result.push(new Card(rank, suit, rank+'_'+suit))
     }
   }
 
@@ -210,7 +308,7 @@ class EventSlotChange extends Event {
   slot:Slot
   
   constructor(old:Slot, slot:Slot) {
-    super('onslotchange')
+    super('slotchange')
     this.old = old
     this.slot = slot
   }
@@ -232,90 +330,131 @@ class Playfield {
     assert(result)
     return result
   }
+
+  slotForCard(wcard:WorldCard) {
+    for (const slot of this.slots) {
+      if (slot.hasCard(wcard))
+        return slot
+    }
+    throw new Error(`Card ${wcard.card.id} is not in a slot`)
+  }
   
-  updateSlot(slot:Slot):Playfield {
-    assert(this.slots.find(s => s.id == slot.id))
-    const result = new Playfield(this.slots.filter(s => s.id != slot.id).concat([slot]))
-    return result
+  card(id:string):WorldCard {
+    for (const slot of this.slots) {
+      const w = slot.cardById(id)
+      if (w)
+        return w
+    }
+    throw new Error(`No such card ${id}`)
+  }
+  
+  slotsUpdate(slots:Slot[]):Playfield {
+    assert(slots.every(slot => this.slots.find(s => s.id == slot.id)))
+    return new Playfield(this.slots.filter(s => !slots.some(slot => slot.id == s.id)).concat(slots))
+  }
+}
+
+class App {
+  readonly notifierSlot:NotifierSlot
+  private playfield:Playfield
+
+  constructor(playfield:Playfield, notifierSlot:NotifierSlot) {
+    this.playfield = playfield
+    this.notifierSlot = notifierSlot
+  }
+
+  playfieldGet():Playfield {
+    return this.playfield
+  }
+  
+  playfieldMutate(playfield:Playfield):Playfield {
+    this.playfield = playfield
+    return playfield
   }
 }
 
 function run(urlCardImages:string, urlCardBack:string) {
-  const deck = shuffled(deck52())
-  const root = new UISlotRoot()
-  const uislotP1 = new UISlotFullWidth('112px')
-  root.add(uislotP1)
-  const uislotWaste = new UISlotFullWidth(112*1.5+'px','75%')
-  root.add(uislotWaste)
-  const uislotStock = new UISlotSingle(112*1.5+'px','25%')
-  root.add(uislotStock)
-  const uislot = new UISlotFullWidth('112px')
-  root.add(uislot)
-
-  const notifierSlot = new NotifierSlot()
-  notifierSlot.events["hand-p0"] = new EventTarget()
-  notifierSlot.events["hand-p0"].addEventListener(
-    "onslotchange",
-    e => { uislot.change(urlCardImages, urlCardBack, e.old, e.slot) }
+  let playfield = new Playfield(
+    [new Slot("p0"),
+     new Slot("p1"),
+     new Slot("stock"),
+     new Slot("waste")]
   )
 
-  notifierSlot.events["hand-p1"] = new EventTarget()
-  notifierSlot.events["hand-p1"].addEventListener(
-    "onslotchange",
+  const notifierSlot = new NotifierSlot()
+  const app = new App(playfield, notifierSlot)
+  
+  const deck = shuffled(deck52())
+  const root = new UISlotRoot()
+  const uislotP1 = new UISlotFullWidth('p1', app, '112px')
+  uislotP1.init()
+  root.add(uislotP1)
+  const uislotWaste = new UISlotFullWidth('waste', app, 112*1.5+'px','75%')
+  uislotWaste.init()
+  root.add(uislotWaste)
+  const uislotStock = new UISlotSingle('stock', app, 112*1.5+'px','25%')
+  uislotStock.init()
+  root.add(uislotStock)
+  const uislotP0 = new UISlotFullWidth('p0', app, '112px')
+  uislotP0.init()
+  root.add(uislotP0)
+
+  notifierSlot.events["p0"] = new EventTarget()
+  notifierSlot.events["p0"].addEventListener(
+    "slotchange",
+    e => { uislotP0.change(urlCardImages, urlCardBack, e.old, e.slot) }
+  )
+
+  notifierSlot.events["p1"] = new EventTarget()
+  notifierSlot.events["p1"].addEventListener(
+    "slotchange",
     e => { uislotP1.change(urlCardImages, urlCardBack, e.old, e.slot) }
   )
 
   notifierSlot.events["stock"] = new EventTarget()
   notifierSlot.events["stock"].addEventListener(
-    "onslotchange",
+    "slotchange",
     e => { uislotStock.change(urlCardImages, urlCardBack, e.old, e.slot) }
   )
   
   notifierSlot.events["waste"] = new EventTarget()
   notifierSlot.events["waste"].addEventListener(
-    "onslotchange",
+    "slotchange",
     e => { uislotWaste.change(urlCardImages, urlCardBack, e.old, e.slot) }
   )
   
-  let playfield = new Playfield(
-    [new Slot("hand-p0"),
-     new Slot("hand-p1"),
-     new Slot("stock"),
-     new Slot("waste")]
-  )
-  
-  let sold = playfield.slot("hand-p0")
+  let sold = playfield.slot("p0")
   let snew = sold.add(deck.slice(0,10).map(c => new WorldCard(c, true)))
-  playfield = playfield.updateSlot(snew)
+  playfield = playfield.slotsUpdate([snew])
   notifierSlot.events[sold.id].dispatchEvent(new EventSlotChange(sold, snew))
 
-  sold = playfield.slot("hand-p1")
+  sold = playfield.slot("p1")
   snew = sold.add(deck.slice(10,20).map(c => new WorldCard(c, false)))
-  playfield = playfield.updateSlot(snew)
+  playfield = playfield.slotsUpdate([snew])
   notifierSlot.events[sold.id].dispatchEvent(new EventSlotChange(sold, snew))
 
   sold = playfield.slot("stock")
   snew = sold.add(deck.slice(20).map(c => new WorldCard(c, false)))
-  playfield = playfield.updateSlot(snew)
+  playfield = playfield.slotsUpdate([snew])
   notifierSlot.events[sold.id].dispatchEvent(new EventSlotChange(sold, snew))
 
-  let p = [playfield]
-  
+  app.playfieldMutate(playfield)
+
   uislotStock.element.addEventListener(
-    "onclick",
+    "click",
     e => {
       let sold = playfield.slot("stock")
       if (!sold.empty()) {
         let top = sold.top()
         let snew = sold.remove([top])
-        let playfield = p[0].updateSlot(snew)
+        let playfield = app.playfieldGet().slotsUpdate([snew])
         notifierSlot.events[sold.id].dispatchEvent(new EventSlotChange(sold, snew))
       
         sold = playfield.slot("waste")
         snew = sold.add([top])
-        playfield = playfield.updateSlot(snew)
+        playfield = playfield.slotsUpdate([snew])
         notifierSlot.events[sold.id].dispatchEvent(new EventSlotChange(sold, snew))
-        p[0] = playfield
+        app.playfieldMutate(playfield)
       }
     }
   )
