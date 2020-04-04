@@ -1,3 +1,7 @@
+const CARD_WIDTH = 74
+const CARD_HEIGHT = 112
+type SlotUpdate = [Slot, Slot]
+
 function errorHandler(message, source?, lineno?, colno?, error?, showAlert=true) {
   if (showAlert)
     alert(message)
@@ -46,6 +50,10 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
     this.cards = cards
   }
 
+  static fromSerialized(serialized:any) {
+    return new Slot(serialized.id, serialized.cards.map(c => new WorldCard(Card.fromSerialized(c.card), c.faceUp)))
+  }
+  
   add(wcards:WorldCard[], before?:Card):Slot {
     const idx = (() => {
       if (before) {
@@ -71,6 +79,10 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
     const idx = this.cards.findIndex(c => c.card.is(wcard.card))
     assert(idx != -1)
     return new Slot(this.id, this.cards.slice(0, idx).concat([wcard_]).concat(this.cards.slice(idx+1)))
+  }
+
+  clear():Slot {
+    return new Slot(this.id, [])
   }
   
   top():WorldCard {
@@ -100,7 +112,7 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
   }
 
   serialize() {
-    return { ...super.serialize(), ...this.cards.map(c => c.serialize()) }
+    return { ...super.serialize(), cards: this.cards.map(c => c.serialize()) }
   }
 }
 
@@ -132,6 +144,9 @@ abstract class UISlot {
       "slotchange",
       e => { this.change(this.app.urlCardImages, this.app.urlCardBack, e.old, e.slot) }
     )
+
+    this.element.classList.add("slot")
+    this.element.classList.add("droptarget")
   }
 
   init():void {
@@ -139,6 +154,7 @@ abstract class UISlot {
     this.element.addEventListener("drop", this.onDrop.bind(this))
     this.element.addEventListener("dragover", this.onDragOver.bind(this))
     this.element.addEventListener("dragleave", this.onDragLeave.bind(this))
+    this.element.addEventListener("click", this.onClick.bind(this))
   }
   
   abstract change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void
@@ -163,6 +179,16 @@ abstract class UISlot {
     e.dataTransfer.dropEffect = "move"
   }
 
+  onClick(e:MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (this.app.selected) {
+      this.app.selected.element.classList.remove("selected")
+      this.doMove(this.app.selected.wcard.card.id)
+      this.app.selected = null
+    }
+  }
+
   onDrop(e:DragEvent) {
     e.preventDefault()
     e.stopPropagation()
@@ -171,23 +197,26 @@ abstract class UISlot {
     console.debug(JSON.stringify(dragData))
     if (dragData) {
       const msg = JSON.parse(dragData)
-      const cardSrc = this.app.playfieldGet().wcard(msg.card.id)
-      const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
-      const slotDst = this.app.playfieldGet().slot(this.idSlot)
-      // Two playfield mutates to simplify logic/reduce object creation? Or one mutate?
-      if (slotSrc.is(slotDst)) {
-        // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
-        const slotSrc_ = slotSrc.remove([cardSrc]).add([cardSrc])
-        this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_]], this.app.notifierSlot)
-      } else {
-        // case 2: diff slot. flip
-        const cardSrc = this.app.playfieldGet().wcard(msg.card.id)
-        const slotSrc_ = slotSrc.remove([cardSrc])
-        const slotDst_ = slotDst.add([cardSrc.withFaceUp(true)])
-        this.app.playfieldMutate(
-          this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app.notifierSlot)
-        )
-      }
+      this.doMove(msg.card.id)
+    }
+  }
+
+  private doMove(idCard:string) {
+    const cardSrc = this.app.playfieldGet().wcard(idCard)
+    const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
+    const slotDst = this.app.playfieldGet().slot(this.idSlot)
+    // Two playfield mutates to simplify logic/reduce object creation? Or one mutate?
+    if (slotSrc.is(slotDst)) {
+      // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
+      const slotSrc_ = slotSrc.remove([cardSrc]).add([cardSrc])
+      this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_]], this.app)
+    } else {
+      // case 2: diff slot. flip
+      const slotSrc_ = slotSrc.remove([cardSrc])
+      const slotDst_ = slotDst.add([cardSrc.withFaceUp(true)])
+      this.app.playfieldMutate(
+        this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app)
+      )
     }
   }
   
@@ -203,7 +232,8 @@ class UISlotSingle extends UISlot {
   
   constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string, width='100%') {
     super(document.createElement("div"), idSlot, app, owner, viewer)
-    this.element.setAttribute("style", `display: inline-block; width: ${width}; min-height: ${height}; border: 1px black`)
+    this.element.style.width = CARD_WIDTH.toString()
+    this.element.style.minHeight = height
   }
 
   change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
@@ -218,7 +248,7 @@ class UISlotFullWidth extends UISlot {
   
   constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string, width='100%') {
     super(document.createElement("div"), idSlot, app, owner, viewer)
-    this.element.setAttribute("style", `display: inline-block; width: ${width}; min-height: ${height}; border: 1px black`)
+    this.element.setAttribute("style", `width: ${width}; min-height: ${height};`)
   }
 
   change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
@@ -233,16 +263,20 @@ class UICard {
   readonly wcard:WorldCard
   readonly element:HTMLElement
   readonly uislot:UISlot
-  private app:App
+  private readonly app:App
+  private timerPress = null
+  private readonly dropTarget:boolean
   
   constructor(wcard:WorldCard, uislot:UISlot, app:App, dropTarget:boolean, viewer:Player) {
-    
+    this.dropTarget = dropTarget
     this.app = app
     this.wcard = wcard
     this.uislot = uislot
     
     this.element = document.createElement("div")
-    this.element.setAttribute("style", "display: inline-block")
+    this.element.classList.add("card")
+    if (dropTarget)
+      this.element.classList.add("droptarget")
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
     svg.setAttribute('draggable', "false")
@@ -258,8 +292,8 @@ class UICard {
     }
       
     svg.appendChild(use)
-    svg.setAttribute('width', '74')
-    svg.setAttribute('height', '112')
+    svg.setAttribute('width', CARD_WIDTH.toString())
+    svg.setAttribute('height', CARD_HEIGHT.toString())
 
     this.element.setAttribute("draggable", "true")
     this.element.addEventListener("dragstart", this.onDragStart.bind(this))
@@ -272,7 +306,29 @@ class UICard {
       this.element.addEventListener("dragleave", this.onDragLeave.bind(this))
     }
 
-    this.element.addEventListener("dblclick", this.onDblClick.bind(this))
+    this.element.addEventListener("click", (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+    })
+    
+    this.element.addEventListener("mouseup", (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (this.timerPress) {
+        clearTimeout(this.timerPress)
+        this.timerPress = null
+        this.onClick()
+      }
+    })
+    this.element.addEventListener("mousedown", (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.timerPress = window.setTimeout(
+        () => {
+          this.timerPress = null
+          this.onLongPress()
+        }, 750)
+    })
   }
 
   detach() {
@@ -284,13 +340,35 @@ class UICard {
     parent.appendChild(this.element)
   }
 
-  private onDblClick(e:DragEvent) {
-    e.preventDefault()
-    e.stopPropagation()
+  private onLongPress() {
+    this.flip()
+  }
+  
+  private onClick() {
+//    const el = document.getElementsByClassName("droptarget")
     
+    if (this.app.selected) {
+//      for (let i = 0; i < el.length; ++i) {
+//        el[i].classList.remove("highlighted")
+//      }
+
+      this.app.selected.element.classList.remove("selected")
+      this.doMove(this.app.selected.wcard)
+      this.app.selected = null
+    } else {
+//      for (let i = 0; i < el.length; ++i) {
+//        el[i].classList.add("highlighted")
+//      }
+
+      this.element.classList.add("selected")
+      this.app.selected = this
+    }
+  }
+  
+  private flip() {
     const slot = this.uislot.slot(this.app.playfieldGet())
     const slot_ = slot.replace(this.wcard, this.wcard.withFaceUp(!this.wcard.faceUp))
-    this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app.notifierSlot)
+    this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
   }
   
   private onDragStart(e:DragEvent) {
@@ -324,25 +402,28 @@ class UICard {
     console.debug(JSON.stringify(dragData))
     if (dragData) {
       const msg = JSON.parse(dragData)
-      const cardSrc = this.app.playfieldGet().wcard(msg.card.id)
-      // Two playfield mutates to simplify logic/reduce object creation? Or one mutate?
-      if (!cardSrc.card.is(this.wcard.card)) {
-        const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
-        const slotDst = this.uislot.slot(this.app.playfieldGet())
+      this.doMove(this.app.playfieldGet().wcard(msg.card.id))
+    }
+  }
 
-        if (slotSrc.is(slotDst)) {
-          // case 1: same slot. Only possible outcome is move to end.
-          const slot = this.app.playfieldGet().slotForCard(cardSrc)
-          const slot_ = slot.remove([cardSrc]).add([cardSrc], this.wcard.card)
-          this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app.notifierSlot)
-        } else {
-          // case 2: diff slot. flip
-          const slotSrc_ = slotSrc.remove([cardSrc])
-          const slotDst_ = slotDst.add([cardSrc])
-          this.app.playfieldMutate(
-            this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app.notifierSlot)
-          )
-        }
+  private doMove(cardSrc:WorldCard) {
+    // Two playfield mutates to simplify logic/reduce object creation? Or one mutate?
+    if (!cardSrc.card.is(this.wcard.card)) {
+      const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
+      const slotDst = this.uislot.slot(this.app.playfieldGet())
+
+      if (slotSrc.is(slotDst)) {
+        // case 1: same slot. Only possible outcome is move to end.
+        const slot = this.app.playfieldGet().slotForCard(cardSrc)
+        const slot_ = slot.remove([cardSrc]).add([cardSrc], this.wcard.card)
+        this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
+      } else {
+        // case 2: diff slot. flip
+        const slotSrc_ = slotSrc.remove([cardSrc])
+        const slotDst_ = slotDst.add([cardSrc])
+        this.app.playfieldMutate(
+          this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app)
+        )
       }
     }
   }
@@ -377,6 +458,10 @@ class Card extends Identified<Card> {
     this.rank = rank
   }
 
+  static fromSerialized(serialized:any) {
+    return new Card(serialized.rank, serialized.suit, serialized.id)
+  }
+  
   serialize():any {
     return {
       ...super.serialize(),
@@ -447,12 +532,16 @@ class NotifierSlot {
 }
 
 class Playfield {
-  private slots:Slot[]
+  readonly slots:Slot[]
 
   constructor(slots:Slot[]) {
     this.slots = slots
   }
 
+  static fromSerialized(serialized:any):Playfield {
+    return new Playfield(serialized.slots.map(s => Slot.fromSerialized(s)))
+  }
+  
   slot(id:string):Slot {
     const result = this.slots.find(s => s.isId(id))
     assert(result)
@@ -476,20 +565,32 @@ class Playfield {
     throw new Error(`No such card ${id}`)
   }
   
-  slotsUpdate(slots:[Slot, Slot][], notifierSlot:NotifierSlot):Playfield {
+  slotsUpdate(slots:SlotUpdate[], app:App, rpc=true):Playfield {
     assert(slots.every(([slot, _slot]) => slot.is(_slot) && this.slots.find(s => s.is(slot))))
     for (const [slot, slot_] of slots) {
-      notifierSlot.events[slot.id].dispatchEvent(new EventSlotChange(slot, slot_))
+      app.notifierSlot.events[slot.id].dispatchEvent(new EventSlotChange(slot, slot_))
+    }
+    if (rpc && app.peerConn) {
+      app.peerConn.send({slotUpdates: slots.map(([s, s_]) => [s.serialize(), s_.serialize()])})
     }
     return new Playfield(
       this.slots.filter(s => !slots.some(([slot,_]) => slot.is(s))).concat(slots.map(([_,slotNew]) => slotNew))
     )
   }
+
+  serialize():any {
+    return { slots: this.slots.map(s => s.serialize()) }
+  }
 }
 
+declare var Peer
+
 class App {
+  peer:any
+  peerConn:any
   receiveChannel:any
   sendChannel:any
+  selected?:UICard
   readonly notifierSlot:NotifierSlot
   readonly urlCardImages:string
   readonly urlCardBack:string
@@ -512,82 +613,60 @@ class App {
   }
 }
 
-async function host(app:App) {
-  function handleReceiveMessage(event) {
-    console.debug(event.data);
-  }
+function host(app:App) {
+  const id = (document.getElementById("peerjs-id") as HTMLInputElement).value
+  app.peer = new Peer(id)
+  console.log("Registering as " + id)
   
-  function receiveChannelCallback(event) {
-    app.receiveChannel = event.channel;
-    app.receiveChannel.onmessage = handleReceiveMessage;
-    app.receiveChannel.onopen = handleReceiveChannelStatusChange;
-    app.receiveChannel.onclose = handleReceiveChannelStatusChange;
-  }
+  app.peer.on('open', function(id) {
+    document.getElementById("peerjs-status").innerHTML = "Registered"
+  })
 
-  function handleSendChannelStatusChange(event) {
-    if (app.sendChannel) {
-      var state = app.sendChannel.readyState;
-        console.debug(state)
+  app.peer.on('connection', function(conn) {
+    console.debug("Peer connected")
+    
+    // Receive messages
+    conn.on('data', function(data) {
+      console.log('Received', data)
+
+      let updates:SlotUpdate[]
+      let slots:Slot[]
       
-      if (state === "open") {
-        app.sendChannel.send("Hello")
+      if (data.slotUpdates != undefined) {
+        updates = data.slotUpdates.map(([s,s_]) => [Slot.fromSerialized(s), Slot.fromSerialized(s_)])
+      } else {
+        slots = Playfield.fromSerialized(data.playfield).slots
+        updates = []
+        for (const slot of slots) {
+          updates.push([app.playfieldGet().slot(slot.id), slot])
+        }
       }
-    }
+      
+      app.playfieldGet().slotsUpdate(updates, app, false)
+    });
+  })
+
+  app.peer.on('error', function(err) { throw new Error("PeerJS: " + err) })
+}
+
+function connect(app:App) {
+  const idPeer = (document.getElementById("peerjs-target") as HTMLInputElement).value
+  console.log("Attempting connection to " + idPeer)
+  const conn = app.peer.connect(idPeer)
+  conn.on('open', function() {
+    console.debug("Peer opened")
+    document.getElementById("connect-status").innerHTML = "Connected"
+    app.peerConn = conn
+  });
+  conn.on('error', function(err) { throw new Error(`Connection to ${idPeer}: ${err}`) })
+}
+
+function send(app:App) {
+  if (app.peerConn) {
+    app.peerConn.send({playfield: app.playfieldGet().serialize()})
+  } else {
+    console.error("No peer")
   }
-
-  function handleReceiveChannelStatusChange(event) {
-    if (app.receiveChannel) {
-      console.log("Receive channel's status has changed to " +
-                  app.receiveChannel.readyState);
-    }
-  }
-
-  const localConnection = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}]})  
-
-  app.sendChannel = localConnection.createDataChannel("sendChannel")
-  app.sendChannel.onopen = handleSendChannelStatusChange
-  app.sendChannel.onclose = handleSendChannelStatusChange
-  
-  const remoteConnection = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}]})  
-  remoteConnection.ondatachannel = receiveChannelCallback
-
-  localConnection.onicecandidate = e => {
-    console.debug("Local candidate")
-    console.debug(e.candidate)
-    if (e.candidate) {
-//      remoteConnection.addIceCandidate(e.candidate)
-      remoteConnection.addIceCandidate({
-  "candidate": "candidate:1 1 UDP 1686052863 203.59.118.63 36937 typ srflx raddr 0.0.0.0 rport 0",
-  "sdpMid": "0",
-  "sdpMLineIndex": 0,
-  "usernameFragment": "237a7cd8"
-})
-    }
-  }
-  remoteConnection.onicecandidate = e => {
-    console.debug("Remote candidate")
-    console.debug(e.candidate)
-    if (e.candidate) {
-//      localConnection.addIceCandidate(e.candidate)
-      localConnection.addIceCandidate({
-  "candidate": "candidate:1 1 UDP 1686052863 203.59.118.63 33198 typ srflx raddr 0.0.0.0 rport 0",
-  "sdpMid": "0",
-  "sdpMLineIndex": 0,
-  "usernameFragment": "04bde3b0"
-})
-    }
-  }
-
-  const offer = await localConnection.createOffer()
-  await localConnection.setLocalDescription(offer)
-  console.debug("Offer")
-  console.debug(offer.sdp)
-  await remoteConnection.setRemoteDescription(localConnection.localDescription)
-  const answer = await remoteConnection.createAnswer()
-  await remoteConnection.setLocalDescription(answer)
-  console.debug("Answer")
-  console.log(answer.sdp)
-  await localConnection.setRemoteDescription(remoteConnection.localDescription)
 }
 
 function run(urlCardImages:string, urlCardBack:string) {
@@ -600,39 +679,58 @@ function run(urlCardImages:string, urlCardBack:string) {
 
   const app = new App(playfield, new NotifierSlot(), urlCardImages, urlCardBack)
 
-  document.getElementById("host").addEventListener("click", () => host(app))
+  document.getElementById("id-get").addEventListener("click", () => host(app))
+  document.getElementById("connect").addEventListener("click", () => connect(app))
+  document.getElementById("send").addEventListener("click", () => send(app))
   
   const p0 = new Player()
   const p1 = new Player()
   
   const deck = shuffled(deck52())
   const root = new UISlotRoot()
-  const uislotP1 = new UISlotFullWidth('p1', app, p1, p0, '112px')
-  uislotP1.init()
-  root.add(uislotP1)
-  const uislotWaste = new UISlotFullWidth('waste', app, null, p0, 112*1.5+'px','75%')
+  const uislotTop = new UISlotFullWidth('p1', app, p1, p0, `${CARD_HEIGHT}px`)
+  uislotTop.init()
+  root.add(uislotTop)
+
+  // Refactor as UI element...
+  const divPlay = document.createElement("div")
+  divPlay.style.display = 'flex'
+  
+  const uislotWaste = new UISlotFullWidth('waste', app, null, p0, CARD_HEIGHT*1.5+'px','100%')
   uislotWaste.init()
-  root.add(uislotWaste)
-  const uislotStock = new UISlotSingle('stock', app, null, p0, 112*1.5+'px','25%')
+  uislotWaste.element.style.flexGrow = "1"
+  divPlay.appendChild(uislotWaste.element)
+  const uislotStock = new UISlotSingle('stock', app, null, p0, CARD_HEIGHT*1.5+'px',`${CARD_WIDTH}px`)
   uislotStock.init()
-  root.add(uislotStock)
-  const uislotP0 = new UISlotFullWidth('p0', app, p0, p0, '112px')
-  uislotP0.init()
-  root.add(uislotP0)
+  divPlay.appendChild(uislotStock.element)
 
-  let sold = playfield.slot("p0")
-  let snew = sold.add(deck.slice(0,10).map(c => new WorldCard(c, true)))
-  playfield = playfield.slotsUpdate([[sold, snew]], app.notifierSlot)
+  document.body.appendChild(divPlay)
+  
+  const uislotBottom = new UISlotFullWidth('p0', app, p0, p0, `${CARD_HEIGHT}px`)
+  uislotBottom.init()
+  root.add(uislotBottom)
 
-  sold = playfield.slot("p1")
-  snew = sold.add(deck.slice(10,20).map(c => new WorldCard(c, true)))
-  playfield = playfield.slotsUpdate([[sold,snew]], app.notifierSlot)
+  function newGame() {
+    const playfield = app.playfieldGet()
+    const updates:Array<SlotUpdate> = []
+    
+    updates.push([playfield.slot("p0"),
+                  playfield.slot("p0").clear().add(deck.slice(0,10).map(c => new WorldCard(c, true)))])
 
-  sold = playfield.slot("stock")
-  snew = sold.add(deck.slice(20).map(c => new WorldCard(c, false)))
-  playfield = playfield.slotsUpdate([[sold,snew]], app.notifierSlot)
+    updates.push([playfield.slot("p1"),
+                  playfield.slot("p1").clear().add(deck.slice(10,20).map(c => new WorldCard(c, true)))])
 
-  app.playfieldMutate(playfield)
+    updates.push([playfield.slot("stock"),
+                  playfield.slot("stock").clear().add(deck.slice(20).map(c => new WorldCard(c, false)))])
+
+    updates.push([playfield.slot("waste"),
+                  playfield.slot("waste").clear()])
+    
+    app.playfieldMutate(playfield.slotsUpdate(updates, app))
+  }
+
+  newGame()
+  document.getElementById("game-new").addEventListener("click", () => newGame())
 }
 
 document.addEventListener("deviceready", () => {

@@ -12,7 +12,8 @@
   "dependencies": {
     "cordova-plugin-device": "^2.0.3",
     "cordova-plugin-file": "^6.0.2",
-    "file": "^0.2.2"
+    "file": "^0.2.2",
+    "peerjs": "^1.2.0"
   },
   "devDependencies": {
     "cordova": "^9.0.0",

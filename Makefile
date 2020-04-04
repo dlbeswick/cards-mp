@@ -4,9 +4,12 @@ SASS = sass
 
 SRC = ts/cards.ts
 
-.PHONY: clean serve build run run-emu cordova cordova-prepare browser data
+.PHONY: clean serve build run run-emu cordova cordova-prepare browser 
 
-build: www/css/app.css www/js/app.js | www/js www/css data
+www/js/peerjs.min.js: node_modules/peerjs/dist/peerjs.min.js
+	cp $< $@
+
+build: www/css/app.css www/js/app.js www/js/peerjs.min.js | www/js www/css
 
 browser: cordova-prepare
 	"$(CORDOVA)" build browser
@@ -24,7 +27,7 @@ www/css :
 	mkdir -p $@
 
 www/js/app.js : $(SRC)
-	"$(TYPESCRIPT)" --noEmitOnError --alwaysStrict --target es6 --outFile $@ $<
+	"$(TYPESCRIPT)" --noEmitOnError --alwaysStrict --target es2016 --outFile $@ $<
 
 www/css/app.css : sass/app.scss
 	"$(SASS)" $<:$@
