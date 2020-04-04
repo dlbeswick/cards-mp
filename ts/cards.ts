@@ -488,6 +488,8 @@ class Playfield {
 }
 
 class App {
+  receiveChannel:any
+  sendChannel:any
   readonly notifierSlot:NotifierSlot
   readonly urlCardImages:string
   readonly urlCardBack:string
@@ -510,6 +512,84 @@ class App {
   }
 }
 
+async function host(app:App) {
+  function handleReceiveMessage(event) {
+    console.debug(event.data);
+  }
+  
+  function receiveChannelCallback(event) {
+    app.receiveChannel = event.channel;
+    app.receiveChannel.onmessage = handleReceiveMessage;
+    app.receiveChannel.onopen = handleReceiveChannelStatusChange;
+    app.receiveChannel.onclose = handleReceiveChannelStatusChange;
+  }
+
+  function handleSendChannelStatusChange(event) {
+    if (app.sendChannel) {
+      var state = app.sendChannel.readyState;
+        console.debug(state)
+      
+      if (state === "open") {
+        app.sendChannel.send("Hello")
+      }
+    }
+  }
+
+  function handleReceiveChannelStatusChange(event) {
+    if (app.receiveChannel) {
+      console.log("Receive channel's status has changed to " +
+                  app.receiveChannel.readyState);
+    }
+  }
+
+  const localConnection = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}]})  
+
+  app.sendChannel = localConnection.createDataChannel("sendChannel")
+  app.sendChannel.onopen = handleSendChannelStatusChange
+  app.sendChannel.onclose = handleSendChannelStatusChange
+  
+  const remoteConnection = new RTCPeerConnection({iceServers: [{urls: "stun:stun.l.google.com:19302"}]})  
+  remoteConnection.ondatachannel = receiveChannelCallback
+
+  localConnection.onicecandidate = e => {
+    console.debug("Local candidate")
+    console.debug(e.candidate)
+    if (e.candidate) {
+//      remoteConnection.addIceCandidate(e.candidate)
+      remoteConnection.addIceCandidate({
+  "candidate": "candidate:1 1 UDP 1686052863 203.59.118.63 36937 typ srflx raddr 0.0.0.0 rport 0",
+  "sdpMid": "0",
+  "sdpMLineIndex": 0,
+  "usernameFragment": "237a7cd8"
+})
+    }
+  }
+  remoteConnection.onicecandidate = e => {
+    console.debug("Remote candidate")
+    console.debug(e.candidate)
+    if (e.candidate) {
+//      localConnection.addIceCandidate(e.candidate)
+      localConnection.addIceCandidate({
+  "candidate": "candidate:1 1 UDP 1686052863 203.59.118.63 33198 typ srflx raddr 0.0.0.0 rport 0",
+  "sdpMid": "0",
+  "sdpMLineIndex": 0,
+  "usernameFragment": "04bde3b0"
+})
+    }
+  }
+
+  const offer = await localConnection.createOffer()
+  await localConnection.setLocalDescription(offer)
+  console.debug("Offer")
+  console.debug(offer.sdp)
+  await remoteConnection.setRemoteDescription(localConnection.localDescription)
+  const answer = await remoteConnection.createAnswer()
+  await remoteConnection.setLocalDescription(answer)
+  console.debug("Answer")
+  console.log(answer.sdp)
+  await localConnection.setRemoteDescription(remoteConnection.localDescription)
+}
+
 function run(urlCardImages:string, urlCardBack:string) {
   let playfield = new Playfield(
     [new Slot("p0"),
@@ -520,6 +600,8 @@ function run(urlCardImages:string, urlCardBack:string) {
 
   const app = new App(playfield, new NotifierSlot(), urlCardImages, urlCardBack)
 
+  document.getElementById("host").addEventListener("click", () => host(app))
+  
   const p0 = new Player()
   const p1 = new Player()
   
