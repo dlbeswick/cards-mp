@@ -51,7 +51,7 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
   }
 
   static fromSerialized(serialized:any) {
-    return new Slot(serialized.id, serialized.cards.map(c => new WorldCard(Card.fromSerialized(c.card), c.faceUp)))
+    return new Slot(serialized.id, serialized.cards.map(c => WorldCard.fromSerialized(c)))
   }
   
   add(wcards:WorldCard[], before?:Card):Slot {
@@ -232,9 +232,15 @@ abstract class UISlot {
         this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_]], this.app)
       )
     } else {
-      // case 2: diff slot. flip
+      // case 2: diff slot. Always flip face-up, unless a human player has deliberately flipped it.
+      let faceUp
+      if (cardSrc.faceUpIsConscious)
+        faceUp = cardSrc.faceUp
+      else
+        faceUp = true
+      
       const slotSrc_ = slotSrc.remove([cardSrc])
-      const slotDst_ = slotDst.add([cardSrc.withFaceUp(true)])
+      const slotDst_ = slotDst.add([cardSrc.withFaceUp(faceUp)])
       this.app.playfieldMutate(
         this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app)
       )
@@ -309,7 +315,7 @@ class UICard {
     
     const use = document.createElementNS("http://www.w3.org/2000/svg", "use")
 
-    if (wcard.faceUp && (this.uislot.isViewableBy(viewer)))
+    if (wcard.faceUp && this.uislot.isViewableBy(viewer))
       use.setAttribute('href', app.urlCardImages + '#c' + wcard.card.suit + '_' + wcard.card.rank)
     else {
       use.setAttribute('href', app.urlCardBack + '#back')
@@ -331,13 +337,13 @@ class UICard {
       this.element.addEventListener("dragleave", this.onDragLeave.bind(this))
     }
 
+    // Stop slots swallowing our mouse events
     this.element.addEventListener("click", (e) => {
       e.preventDefault()
       e.stopPropagation()
-      this.onClick()
     })
 
-/*    function lpMouseUp(self, e) {
+    function lpMouseUp(self, e) {
       e.preventDefault()
       e.stopPropagation()
       if (self.timerPress) {
@@ -348,17 +354,25 @@ class UICard {
     }
     
     function lpMouseDown(self, e) {
-      self.touchYStart = e.touch[0].clientY
+      self.touchYStart = e.clientY
       self.timerPress = window.setTimeout(
         () => {
           self.timerPress = null
           self.onLongPress()
-        }, 750)
+        }, 500)
     }
     
-    this.element.addEventListener("mouseup", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseUp(this, e)})
-    this.element.addEventListener("mousedown", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseDown(this, e)})
-    this.element.addEventListener("touchstart", (e) => lpMouseDown(this, e))
+    this.element.addEventListener("pointerup", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseUp(this, e)})
+    this.element.addEventListener("pointerdown", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseDown(this, e)})
+    this.element.addEventListener("pointermove", (e) => {
+      if (Math.abs(e.clientY - this.touchYStart) > 5) {
+        if (this.timerPress) {
+          clearTimeout(this.timerPress)
+          this.timerPress = null
+        }
+      }
+    })
+/*    this.element.addEventListener("touchstart", (e) => lpMouseDown(this, e))
     this.element.addEventListener("touchend", (e) => lpMouseUp(this, e))
     this.element.addEventListener("touchmove", (e) => {
       if (Math.abs(e.touch.clientY - this.touchYStart) > 5) {
@@ -406,7 +420,7 @@ class UICard {
   
   private flip() {
     const slot = this.uislot.slot(this.app.playfieldGet())
-    const slot_ = slot.replace(this.wcard, this.wcard.withFaceUp(!this.wcard.faceUp))
+    const slot_ = slot.replace(this.wcard, this.wcard.withFaceUpConscious(!this.wcard.faceUp))
     this.app.playfieldMutate(
       this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
     )
@@ -453,14 +467,12 @@ class UICard {
       const slotDst = this.uislot.slot(this.app.playfieldGet())
 
       if (slotSrc.is(slotDst)) {
-        // same slot
         const slot = this.app.playfieldGet().slotForCard(cardSrc)
         const slot_ = slot.remove([cardSrc]).add([cardSrc], this.wcard.card)
         this.app.playfieldMutate(
           this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
         )
       } else {
-        // diff slot. flip
         const slotSrc_ = slotSrc.remove([cardSrc])
         const slotDst_ = slotDst.add([cardSrc], this.wcard.card)
         this.app.playfieldMutate(
@@ -523,20 +535,31 @@ class Card extends Identified<Card> {
 class WorldCard {
   readonly card:Card
   readonly faceUp:boolean
+  readonly faceUpIsConscious:boolean
 
-  constructor(card:Card, faceUp:boolean) {
+  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false) {
     this.card = card
     this.faceUp = faceUp
+    this.faceUpIsConscious = faceUpIsConscious
   }
 
+  static fromSerialized(serialized:any) {
+    return new WorldCard(Card.fromSerialized(serialized.card), serialized.faceUp, serialized.faceUpIsConscious)
+  }
+  
   withFaceUp(faceUp:boolean) {
-    return new WorldCard(this.card, faceUp)
+    return new WorldCard(this.card, faceUp, this.faceUpIsConscious)
   }
 
+  withFaceUpConscious(faceUp:boolean) {
+    return new WorldCard(this.card, faceUp, true)
+  }
+  
   serialize():any {
     return {
       card: this.card.serialize(),
-      faceUp: this.faceUp
+      faceUp: this.faceUp,
+      faceUpConscious: this.faceUpIsConscious
     }
   }
 }
