@@ -40,21 +40,26 @@
         <script type="text/javascript" src="js/app.js"></script>
 		<script type="text/javascript" src="js/peerjs.min.js"></script>
 		<div id="error" class="error"></div>
-		<form>
-		  <div>
-			<label>My id: <input id="peerjs-id" /></label>
-			<button id="id-get" type="button">Register id</button>
-			<span id="peerjs-status">Unregistered</span>
-		  </div>
-		  <div>
-			<label>Connect to: <input id="peerjs-target" /></label>
-			<button id="connect" type="button">Connect</button>
-			<button id="send" type="button">Sync</button>
-			<span id="connect-status">Not connected</span>
-		  </div>
-		  <div>
-			<button id="game-new" type="button">New game</button>
-		  </div>
-		</form>
+		<div class="ui">
+		  <form>
+			<div>
+			  <label>My id: <input id="peerjs-id" /></label>
+			  <button id="id-get" type="button">Register id</button>
+			  <span id="peerjs-status">Unregistered</span>
+			</div>
+			<div>
+			  <label>Connect to: <input id="peerjs-target" /></label>
+			  <button id="connect" type="button">Connect</button>
+			  <button id="send" type="button">Sync</button>
+			  <span id="connect-status">Not connected</span>
+			</div>
+			<div>
+			  <button id="game-new" type="button">New game</button>
+			  <button id="player-next" type="button">Switch Player</button>
+			  <span id="player">Player 1</span>
+			</div>
+		  </form>
+		</div>
+		<div id="playfield"></div>
     </body>
 </html>

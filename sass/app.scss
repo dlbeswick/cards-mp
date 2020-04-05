@@ -1,3 +1,15 @@
+.error {
+	color: red;
+	background-color: bisque;
+	padding: 4px*0.75 4px 4px*0.75 4px;
+	border: 1px;
+	border-radius: 4px;
+	border-color: red;
+	border-style: solid;
+	margin: 5px;
+	display: none;
+}
+
 .selected {
 	background: #ffaaaa
 }
@@ -15,4 +27,21 @@
 
 .card {
 	display: inline-block;
+}
+
+.card-overlap {
+	display: inline-block;
+	margin-right: -50px;
+}
+
+.ui {
+	font-size: large;
+}
+
+.ui input {
+	font-size: large;
+}
+
+.ui button {
+	font-size: large;
 }
