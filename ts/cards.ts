@@ -289,6 +289,7 @@ class UICard {
   readonly uislot:UISlot
   private readonly app:App
   private timerPress = null
+  private touchYStart = 0
   private readonly dropTarget:boolean
   
   constructor(wcard:WorldCard, uislot:UISlot, app:App, dropTarget:boolean, viewer:Player, classCard="card") {
@@ -335,11 +336,38 @@ class UICard {
       e.stopPropagation()
       this.onClick()
     })
-    this.element.addEventListener("dblclick", (e) => {
+
+/*    function lpMouseUp(self, e) {
       e.preventDefault()
       e.stopPropagation()
-      this.flip()
-    })
+      if (self.timerPress) {
+        clearTimeout(self.timerPress)
+        self.timerPress = null
+        self.onClick()
+      }
+    }
+    
+    function lpMouseDown(self, e) {
+      self.touchYStart = e.touch[0].clientY
+      self.timerPress = window.setTimeout(
+        () => {
+          self.timerPress = null
+          self.onLongPress()
+        }, 750)
+    }
+    
+    this.element.addEventListener("mouseup", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseUp(this, e)})
+    this.element.addEventListener("mousedown", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseDown(this, e)})
+    this.element.addEventListener("touchstart", (e) => lpMouseDown(this, e))
+    this.element.addEventListener("touchend", (e) => lpMouseUp(this, e))
+    this.element.addEventListener("touchmove", (e) => {
+      if (Math.abs(e.touch.clientY - this.touchYStart) > 5) {
+        if (self.timerPress) {
+          clearTimeout(this.timerPress)
+          this.timerPress = null
+        }
+      }
+    })*/
   }
 
   detach() {
@@ -434,7 +462,7 @@ class UICard {
       } else {
         // diff slot. flip
         const slotSrc_ = slotSrc.remove([cardSrc])
-        const slotDst_ = slotDst.add([cardSrc])
+        const slotDst_ = slotDst.add([cardSrc], this.wcard.card)
         this.app.playfieldMutate(
           this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app)
         )
@@ -474,6 +502,13 @@ class Card extends Identified<Card> {
 
   static fromSerialized(serialized:any) {
     return new Card(serialized.rank, serialized.suit, serialized.id)
+  }
+
+  color():Color {
+    if (this.suit == Suit.CLUB || this.suit == Suit.SPADE)
+      return Color.BLACK
+    else
+      return Color.RED
   }
   
   serialize():any {
@@ -530,6 +565,21 @@ function shuffled(deck:Card[]):Card[] {
   return result
 }
 
+function orderColorAlternate(c:Card):number {
+  switch (c.suit) {
+    case Suit.CLUB: return 0; break;
+    case Suit.DIAMOND: return 1; break;
+    case Suit.SPADE: return 2; break;
+    case Suit.HEART: return 3; break;
+  }
+}
+
+function sortedByAltColorAndRank(deck:Card[]):Card[] {
+  const result = [...deck]
+  result.sort((a, b) => orderColorAlternate(a) - orderColorAlternate(b) || a.rank - b.rank)
+  return result
+}
+
 class EventSlotChange extends Event {
   old:Slot
   slot:Slot
@@ -538,6 +588,15 @@ class EventSlotChange extends Event {
     super('slotchange')
     this.old = old
     this.slot = slot
+  }
+}
+
+class EventPingBack extends Event {
+  secs:number
+  
+  constructor(secs:number) {
+    super('pingback')
+    this.secs = secs
   }
 }
 
@@ -716,9 +775,11 @@ function host(app:App) {
         console.log('Received', data)
 
         if (data.ping) {
-          conn.send({ping_back: {secs: data.ping.secs}})
+          document.getElementById("connect-status").dispatchEvent(new EventPingBack(data.ping.secs))
+          if (app.peerConn)
+            app.peerConn.send({ping_back: {secs: data.ping.secs}})
         } else if (data.ping_back) {
-          document.getElementById("connect-status").innerHTML = `Connected for ${data.ping_back.secs}s`
+          document.getElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
         } else {
           let updates:SlotUpdate[]
           let slots:Slot[]
@@ -754,7 +815,7 @@ function connect(app:App) {
     const conn = app.peer.connect("mpcard-"+idPeer)
     conn.on('open', function() {
       console.debug("Peer opened")
-      document.getElementById("connect-status").innerHTML = "Connected"
+      document.getElementById("connect-status").innerHTML = "Waiting for reply"
       app.peerConn = conn
       function ping(secs) {
         conn.send({ping: {secs: secs}})
@@ -805,6 +866,10 @@ function run(urlCardImages:string, urlCardBack:string) {
       app.viewerSet(p0)
     }
   })
+  document.getElementById("connect-status").addEventListener(
+    "pingback",
+    function (e:EventPingBack) { this.innerHTML = `Connected for ${e.secs}s` }
+  )
   
   function newGame() {
     const deck = shuffled(deck52())
@@ -813,10 +878,10 @@ function run(urlCardImages:string, urlCardBack:string) {
     const updates:Array<SlotUpdate> = []
     
     updates.push([playfield.slot("p0"),
-                  playfield.slot("p0").clear().add(deck.slice(0,10).map(c => new WorldCard(c, true)))])
+                  playfield.slot("p0").clear().add(sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true)))])
 
     updates.push([playfield.slot("p1"),
-                  playfield.slot("p1").clear().add(deck.slice(10,20).map(c => new WorldCard(c, true)))])
+                  playfield.slot("p1").clear().add(sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true)))])
 
     updates.push([playfield.slot("stock"),
                   playfield.slot("stock").clear().add(deck.slice(20).map(c => new WorldCard(c, false)))])
