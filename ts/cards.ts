@@ -272,19 +272,21 @@ class UISlotSingle extends UISlot {
 
 class UISlotFullWidth extends UISlot {
   readonly element:HTMLElement
-  private classCard:string
+  private classesCard:string[]
   
   constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string, width='100%',
-              classCard="card") {
+              classesSlot:string[]=['slot'], classesCard:string[]=['card']) {
+    
     super(document.createElement("div"), idSlot, app, owner, viewer)
     this.element.setAttribute("style", `width: ${width}; min-height: ${height};`)
-    this.classCard = classCard
+    this.element.classList.add(...classesSlot)
+    this.classesCard = classesCard
   }
 
   change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
     this.element.innerHTML = ''
     for (let wcard of slot) {
-      this.element.appendChild(new UICard(wcard, this, this.app, true, this.viewer, this.classCard).element)
+      this.element.appendChild(new UICard(wcard, this, this.app, true, this.viewer, this.classesCard).element)
     }
   }
 }
@@ -298,14 +300,14 @@ class UICard {
   private touchYStart = 0
   private readonly dropTarget:boolean
   
-  constructor(wcard:WorldCard, uislot:UISlot, app:App, dropTarget:boolean, viewer:Player, classCard="card") {
+  constructor(wcard:WorldCard, uislot:UISlot, app:App, dropTarget:boolean, viewer:Player, classesCard=["card"]) {
     this.dropTarget = dropTarget
     this.app = app
     this.wcard = wcard
     this.uislot = uislot
     
     this.element = document.createElement("div")
-    this.element.classList.add(classCard)
+    this.element.classList.add(...classesCard)
     if (dropTarget)
       this.element.classList.add("droptarget")
 
@@ -734,7 +736,7 @@ class App {
     divPlay.style.display = 'flex'
     
     const uislotWaste = new UISlotFullWidth('waste', this, null, this.viewer, CARD_HEIGHT*1.5+'px','100%',
-                                            'card-overlap')
+                                            ['slot', 'slot-overlap'], ['card', 'card-overlap'])
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
     divPlay.appendChild(uislotWaste.element)
