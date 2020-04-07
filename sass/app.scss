@@ -22,11 +22,19 @@
 	display: inline-block;
 	border: solid 1px #dddddd;
 	margin-top: 5px;
-	margin-bottom: 5px;
+	// Pad bottom so cards can always be dropped there if the slot starts to get full.
+	padding-bottom: 50px;
 }
 
 .slot-overlap {
-	margin-right: 50px;
+	// Increase padding by reverse of card overlap margin, so cards wrap appropriately.
+	padding-right: 50px;
+}
+
+.slot-single label {
+	display: block;
+	font-family: "sans";
+	background: #dddddd;
 }
 
 .card {

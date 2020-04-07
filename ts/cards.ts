@@ -106,6 +106,10 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
   cardById(idCard:string):WorldCard|undefined {
     return this.cards.find(wc => wc.card.id == idCard)
   }
+
+  length() {
+    return this.cards.length
+  }
   
   [Symbol.iterator]():Iterator<WorldCard> {
     return this.cards[Symbol.iterator]()
@@ -256,17 +260,27 @@ abstract class UISlot {
 
 class UISlotSingle extends UISlot {
   readonly element:HTMLElement
+  readonly cards:HTMLElement
+  readonly count:HTMLElement
   
   constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string, width='100%') {
     super(document.createElement("div"), idSlot, app, owner, viewer)
+    this.element.classList.add("slot-single")
     this.element.style.width = CARD_WIDTH.toString()
-    this.element.style.minHeight = height
+    this.count = document.createElement("label")
+    this.count.style.width='100%'
+    this.element.appendChild(this.count)
+    
+    this.cards = document.createElement("div")
+    this.cards.style.minHeight = height
+    this.element.appendChild(this.cards)
   }
 
   change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
-    this.element.innerHTML = ''
+    this.count.innerText = slot.length().toString()
+    this.cards.innerHTML = ''
     if (!slot.empty())
-      this.element.appendChild(new UICard(slot.top(), this, this.app, false, this.viewer).element)
+      this.cards.appendChild(new UICard(slot.top(), this, this.app, false, this.viewer).element)
   }
 }
 
@@ -923,4 +937,24 @@ function run(urlCardImages:string, urlCardBack:string) {
 
 document.addEventListener("deviceready", () => {
   run("img/cards.svg", "img/back.svg")
+
+  // Create a PeerConnection with no streams, but force a m=audio line.
+  const config:RTCConfiguration = {
+    iceServers: [],
+    iceTransportPolicy: "all",
+    iceCandidatePoolSize: 0
+  };
+
+  const offerOptions = {offerToReceiveAudio: true};
+  // Whether we gather IPv6 candidates.
+  // Whether we only gather a single set of candidates for RTP and RTCP.
+
+  console.log(`Creating new PeerConnection with config=${JSON.stringify(config)}`);
+  const pc = new RTCPeerConnection(config);
+  pc.onicecandidate = (c) => console.debug(c)
+//  pc.onicegatheringstatechange = gatheringStateChange;
+  pc.onicecandidateerror = (c) => console.debug(c);
+  pc.createOffer(
+      offerOptions
+  ).then((offer) => { console.debug(offer.sdp); pc.setLocalDescription(offer) });
 })
