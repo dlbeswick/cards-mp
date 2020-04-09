@@ -584,7 +584,7 @@ function deck52() {
   const result:Card[] = []
   
   for (let suit = 0; suit < 4; ++suit) {
-    for (let rank = 0; rank < 12; ++rank) {
+    for (let rank = 0; rank < 13; ++rank) {
       result.push(new Card(rank, suit, rank+'_'+suit))
     }
   }
