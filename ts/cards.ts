@@ -576,7 +576,7 @@ class WorldCard {
     return {
       card: this.card.serialize(),
       faceUp: this.faceUp,
-      faceUpConscious: this.faceUpIsConscious
+      faceUpIsConscious: this.faceUpIsConscious
     }
   }
 }
@@ -726,7 +726,7 @@ class App {
   }
 
   init() {
-    this.viewerSet(this.viewer)
+    this.newGame(this.game.id)
   }
   
   playfieldGet():Playfield {
@@ -943,11 +943,12 @@ class GameDummy implements Game {
   playfield():Playfield {
     const deck = shuffled(deck52())
     return new Playfield(
-      [new Slot("p0", sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true))),
-       new Slot("p1", sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true))),
+      [new Slot("p0", sortedByAltColorAndRank(deck.slice(0,13)).map(c => new WorldCard(c, true))),
+       new Slot("p1", sortedByAltColorAndRank(deck.slice(13,26)).map(c => new WorldCard(c, true))),
        new Slot("p0-meld"),
+       new Slot("waste"),
        new Slot("p1-meld"),
-       new Slot("stock", deck.slice(20).map(c => new WorldCard(c, false)))]
+       new Slot("stock", deck.slice(26).map(c => new WorldCard(c, false)))]
     )
   }
   
@@ -964,11 +965,29 @@ class GameDummy implements Game {
     const divPlay = document.createElement("div")
     divPlay.style.display = 'flex'
     
-    const uislotWaste = new UISlotFullWidth('waste', app, null, viewer, CARD_HEIGHT*1.5+'px','100%',
+    const divWaste = document.createElement("div")
+    divWaste.style.display = 'flex'
+    divWaste.style.flexDirection = 'column'
+    divWaste.style.flexGrow = "1"
+    divPlay.appendChild(divWaste)
+    
+    const uislotMeldOpp = new UISlotFullWidth(opponent.idSlot+'-meld', app, null, viewer, CARD_HEIGHT+'px','100%',
+                                              ['slot', 'slot-overlap-vert'], ['card', 'card-overlap-vert'])
+    uislotMeldOpp.init()
+    uislotMeldOpp.element.style.flexGrow = "1"
+    divWaste.appendChild(uislotMeldOpp.element)
+    
+    const uislotWaste = new UISlotFullWidth('waste', app, null, viewer, CARD_HEIGHT+'px','100%',
                                             ['slot', 'slot-overlap'], ['card', 'card-overlap'])
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
-    divPlay.appendChild(uislotWaste.element)
+    divWaste.appendChild(uislotWaste.element)
+    
+    const uislotMeldPlay = new UISlotFullWidth(viewer.idSlot+'-meld', app, null, viewer, CARD_HEIGHT+'px','100%',
+                                               ['slot', 'slot-overlap-vert'], ['card', 'card-overlap-vert'])
+    uislotMeldPlay.init()
+    uislotMeldPlay.element.style.flexGrow = "1"
+    divWaste.appendChild(uislotMeldPlay.element)
     
     const divStock = document.createElement("div")
     divStock.style.display = 'flex'
@@ -995,8 +1014,18 @@ function run(urlCardImages:string, urlCardBack:string) {
   const p0 = new Player('Player 1', 'p0')
   const p1 = new Player('Player 2', 'p1')
   
-  const app = new App([new GameGinRummy()], new NotifierSlot(), urlCardImages, urlCardBack, p0, [p0, p1],
-                      new UISlotRoot(document.getElementById("playfield")))
+  const app = new App(
+    [
+      new GameDummy(),
+      new GameGinRummy(),
+    ],
+    new NotifierSlot(),
+    urlCardImages,
+    urlCardBack,
+    p0,
+    [p0, p1],
+    new UISlotRoot(document.getElementById("playfield"))
+  )
 
   appGlobal = app
 

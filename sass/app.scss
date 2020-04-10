@@ -18,16 +18,17 @@ div {
 }
 
 .card.selected img {
-  animation: glow 0.25s forwards;
+  animation: glow 2.0s;
+  filter: drop-shadow(0px 0px 20px red);
 }
 
 @keyframes glow {
   from {
-	  filter: drop-shadow(0px 0px 0px red);
+	  filter: drop-shadow(0px 0px 10px red);
   }
 
   to {
-	  filter: drop-shadow(0px 0px 20px orange);
+	  filter: drop-shadow(0px 0px 20px red);
   }
 }
 
@@ -53,6 +54,14 @@ div {
 	padding-right: 50px;
 }
 
+.slot-overlap-vert {
+	// Increase padding by reverse of card overlap margin, so cards wrap appropriately.
+	padding-bottom: 90px;
+	width: 74px;
+	display: flex;
+	flex-direction: column;
+}
+
 .slot-single label {
 	display: block;
 	font-family: "sans";
@@ -65,6 +74,10 @@ div {
 
 .card-overlap {
 	margin-right: -50px;
+}
+
+.card-overlap-vert {
+	margin-bottom: -90px;
 }
 
 #ui {
