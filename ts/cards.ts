@@ -86,11 +86,11 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
   }
   
   top():WorldCard {
-    assert(!this.empty())
+    assert(!this.isEmpty())
     return this.cards[this.cards.length-1]
   }
 
-  empty():boolean {
+  isEmpty():boolean {
     return this.cards.length == 0
   }
 
@@ -109,6 +109,10 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
 
   length() {
     return this.cards.length
+  }
+
+  map(f: (c: WorldCard) => WorldCard): Slot {
+    return new Slot(this.id, this.cards.map(f))
   }
   
   [Symbol.iterator]():Iterator<WorldCard> {
@@ -279,7 +283,7 @@ class UISlotSingle extends UISlot {
   change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
     this.count.innerText = slot.length().toString()
     this.cards.innerHTML = ''
-    if (!slot.empty())
+    if (!slot.isEmpty())
       this.cards.appendChild(new UICard(slot.top(), this, this.app, false, this.viewer).element)
   }
 }
@@ -325,23 +329,19 @@ class UICard {
     if (dropTarget)
       this.element.classList.add("droptarget")
 
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
-    svg.setAttribute('draggable', "false")
-    this.element.appendChild(svg)
-    
-    const use = document.createElementNS("http://www.w3.org/2000/svg", "use")
-
-    if (wcard.faceUp && this.uislot.isViewableBy(viewer))
-      use.setAttribute('href', app.urlCardImages + '#c' + wcard.card.suit + '_' + wcard.card.rank)
+    const svg = document.createElement("img")
+    if (wcard.faceUp && (this.uislot.isViewableBy(viewer) || wcard.faceUpIsConscious))
+      svg.setAttribute('src', app.urlCardImages + '#c' + wcard.card.suit + '_' + wcard.card.rank)
     else {
-      use.setAttribute('href', app.urlCardBack + '#back')
-      use.setAttribute('transform', 'scale(0.45)')
+      svg.setAttribute('src', app.urlCardBack)
     }
-      
-    svg.appendChild(use)
+    svg.setAttribute('draggable', "false")
+    
     svg.setAttribute('width', CARD_WIDTH.toString())
     svg.setAttribute('height', CARD_HEIGHT.toString())
 
+    this.element.appendChild(svg)
+    
     this.element.setAttribute("draggable", "true")
     this.element.addEventListener("dragstart", this.onDragStart.bind(this))
 //    this.element.addEventListener("drag", this.onDrag.bind(this))
@@ -388,6 +388,7 @@ class UICard {
         }
       }
     })
+    this.element.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); })
 /*    this.element.addEventListener("touchstart", (e) => lpMouseDown(this, e))
     this.element.addEventListener("touchend", (e) => lpMouseUp(this, e))
     this.element.addEventListener("touchmove", (e) => {
@@ -436,7 +437,7 @@ class UICard {
   
   private flip() {
     const slot = this.uislot.slot(this.app.playfieldGet())
-    const slot_ = slot.replace(this.wcard, this.wcard.withFaceUpConscious(!this.wcard.faceUp))
+    const slot_ = slot.replace(this.wcard, this.wcard.withFaceStateConscious(!this.wcard.faceUp, this.wcard.faceUp))
     this.app.playfieldMutate(
       this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
     )
@@ -567,8 +568,8 @@ class WorldCard {
     return new WorldCard(this.card, faceUp, this.faceUpIsConscious)
   }
 
-  withFaceUpConscious(faceUp:boolean) {
-    return new WorldCard(this.card, faceUp, true)
+  withFaceStateConscious(faceUp:boolean, conscious:boolean) {
+    return new WorldCard(this.card, faceUp, conscious)
   }
   
   serialize():any {
@@ -878,6 +879,34 @@ function send(app:App) {
   }
 }
 
+function revealAll(app:App) {
+  const updates:SlotUpdate[] = app.playfieldGet().slots.map(s => [s, s.map(wc => wc.withFaceStateConscious(true, true))])
+  app.playfieldMutate(app.playfieldGet().slotsUpdate(updates, app))
+}
+
+function newGameGinRummy(app:App) {
+  const deck = shuffled(deck52())
+  //    const deck = deck52()
+  const playfield = app.playfieldGet()
+  const updates:Array<SlotUpdate> = []
+  
+  updates.push([playfield.slot("p0"),
+                playfield.slot("p0").clear().add(sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true)))])
+
+  updates.push([playfield.slot("p1"),
+                playfield.slot("p1").clear().add(sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true)))])
+
+  updates.push([playfield.slot("stock"),
+                playfield.slot("stock").clear().add(deck.slice(20).map(c => new WorldCard(c, false)))])
+
+  updates.push([playfield.slot("waste"),
+                playfield.slot("waste").clear()])
+  
+  app.playfieldMutate(playfield.slotsUpdate(updates, app))
+}
+
+let appGlobal:App
+
 function run(urlCardImages:string, urlCardBack:string) {
   let playfield = new Playfield(
     [new Slot("p0"),
@@ -891,6 +920,8 @@ function run(urlCardImages:string, urlCardBack:string) {
   
   const app = new App(playfield, new NotifierSlot(), urlCardImages, urlCardBack, p0, [p0, p1],
                       new UISlotRoot(document.getElementById("playfield")))
+
+  appGlobal = app
 
   app.init()
   
@@ -910,29 +941,9 @@ function run(urlCardImages:string, urlCardBack:string) {
     function (e:EventPingBack) { this.innerHTML = `Connected for ${e.secs}s` }
   )
   
-  function newGame() {
-    const deck = shuffled(deck52())
-//    const deck = deck52()
-    const playfield = app.playfieldGet()
-    const updates:Array<SlotUpdate> = []
-    
-    updates.push([playfield.slot("p0"),
-                  playfield.slot("p0").clear().add(sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true)))])
-
-    updates.push([playfield.slot("p1"),
-                  playfield.slot("p1").clear().add(sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true)))])
-
-    updates.push([playfield.slot("stock"),
-                  playfield.slot("stock").clear().add(deck.slice(20).map(c => new WorldCard(c, false)))])
-
-    updates.push([playfield.slot("waste"),
-                  playfield.slot("waste").clear()])
-    
-    app.playfieldMutate(playfield.slotsUpdate(updates, app))
-  }
-
-  newGame()
-  document.getElementById("game-new").addEventListener("click", () => newGame())
+  newGameGinRummy(app)
+  document.getElementById("game-new").addEventListener("click", () => newGameGinRummy(app))
+  document.getElementById("reveal-all").addEventListener("click", () => revealAll(app))
 }
 
 document.addEventListener("deviceready", () => {
@@ -945,12 +956,13 @@ document.addEventListener("deviceready", () => {
     iceCandidatePoolSize: 0
   };
 
-  const offerOptions = {offerToReceiveAudio: true};
+  const offerOptions = {offerToReceiveAudio: false}
   // Whether we gather IPv6 candidates.
   // Whether we only gather a single set of candidates for RTP and RTCP.
 
   console.log(`Creating new PeerConnection with config=${JSON.stringify(config)}`);
-  const pc = new RTCPeerConnection(config);
+  const pc = new RTCPeerConnection(config)
+  const dc = pc.createDataChannel("data")
   pc.onicecandidate = (c) => console.debug(c)
 //  pc.onicegatheringstatechange = gatheringStateChange;
   pc.onicecandidateerror = (c) => console.debug(c);
@@ -958,3 +970,34 @@ document.addEventListener("deviceready", () => {
       offerOptions
   ).then((offer) => { console.debug(offer.sdp); pc.setLocalDescription(offer) });
 })
+
+function test() {
+  function moveStock() {
+    const playfield = appGlobal.playfieldGet()
+    appGlobal.playfieldMutate(
+      playfield.slotsUpdate([
+        [
+          playfield.slot("stock"),
+          playfield.slot("stock").remove([playfield.slot("stock").top()])
+        ],
+        [
+          playfield.slot("waste"),
+          playfield.slot("waste").add([playfield.slot("stock").top().withFaceUp(true)])
+        ]
+      ],
+      appGlobal
+      )
+    )
+
+    if (appGlobal.playfieldGet().slot("stock").isEmpty()) {
+      newGameGinRummy(appGlobal)
+    }
+    
+    window.setTimeout(
+      moveStock,
+      100
+    )
+  }
+
+  moveStock()
+}
