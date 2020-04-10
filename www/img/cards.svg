@@ -5,39 +5,40 @@
 <desc>Contemporary design deck of playing card with typographic face cards - Published by Betzaar.com under the CreativeCommons Attribution+ShareAlike licence</desc>
 
 <defs>
-  <style>
-    g g {
-      display: none;
-    }
-    g g:target {
-      display: inline;
-    }
-  </style>
+	<style>
+	  g g {
+		display: none;
+	  }
+	  g g:target {
+		display: inline;
+	  }
+	</style>
+	
 	<!-- Card outlines -->
 	<rect id="out" width="72" height="110" rx="6" fill="white" stroke="black" stroke-width=".5"/>
 
 	<g id="out_club">
 		<use xlink:href="#out"/>
-		<use x="5" y="35" transform="scale(.5)" xlink:href="#club"/>	
-		<use x="5" y="35" transform="rotate(180,36,55) scale(.5)" xlink:href="#club"/>
+		<use x="2" y="27" transform="scale(.65)" xlink:href="#club"/>	
+		<use x="2" y="27" transform="rotate(180,36,55) scale(.65)" xlink:href="#club"/>
 	</g>	
 
 	<g id="out_diamond">
 		<use xlink:href="#out"/>
-		<use x="6" y="35" transform="scale(0.5, 0.5)" xlink:href="#diamond"/>	
-		<use x="6" y="35" transform="rotate(180,36,55) scale(.5)" xlink:href="#diamond"/>
+		<use x="2" y="27" transform="scale(.65)" xlink:href="#diamond"/>	
+		<use x="2" y="27" transform="rotate(180,36,55) scale(.65)" xlink:href="#diamond"/>
 	</g>
 
 	<g id="out_heart">
 		<use xlink:href="#out"/>
-		<use x="5" y="35" transform="scale(0.5, 0.5)" xlink:href="#heart"/>	
-		<use x="5" y="35" transform="rotate(180,36,55) scale(.5)" xlink:href="#heart"/>
+		<use x="2" y="27" transform="scale(.65)" xlink:href="#heart"/>	
+		<use x="2" y="27" transform="rotate(180,36,55) scale(.65)" xlink:href="#heart"/>
 	</g>
 
 	<g id="out_spade">
 		<use xlink:href="#out"/>
-		<use x="5" y="35" transform="scale(0.5, 0.5)" xlink:href="#spade"/>	
-		<use x="5" y="35" transform="rotate(180,36,55) scale(.5)" xlink:href="#spade"/>
+		<use x="2" y="27" transform="scale(.65)" xlink:href="#spade"/>	
+		<use x="2" y="27" transform="rotate(180,36,55) scale(.65)" xlink:href="#spade"/>
 	</g>
 
 	<!-- Rank text -->
