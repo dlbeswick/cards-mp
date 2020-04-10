@@ -678,10 +678,10 @@ class Playfield {
     throw new Error(`No such card ${id}`)
   }
   
-  slotsUpdate(slots:SlotUpdate[], app:App, rpc=true):Playfield {
+  slotsUpdate(slots:SlotUpdate[], app:App, send=true):Playfield {
     assert(slots.every(([slot, _slot]) => slot.is(_slot) && this.slots.find(s => s.is(slot))))
-    if (rpc && app.peerConn) {
-      app.peerConn.send({slotUpdates: slots.map(([s, s_]) => [s.serialize(), s_.serialize()])})
+    if (send) {
+      app.send({slotUpdates: slots.map(([s, s_]) => [s.serialize(), s_.serialize()])})
     }
     for (const [slot, slot_] of slots) {
       app.notifierSlot.events[slot.id].dispatchEvent(new EventSlotChange(slot, slot_))
@@ -701,20 +701,22 @@ declare var Peer
 class App {
   peer:any
   peerConn:any
-  receiveChannel:any
-  sendChannel:any
   selected?:UICard
   readonly notifierSlot:NotifierSlot
   readonly urlCardImages:string
   readonly urlCardBack:string
+  readonly root:UISlotRoot
   private viewer:Player
-  private playfield:Playfield
-  private root:UISlotRoot
+  private playfield:Playfield = new Playfield([])
   private players:Player[]
+  private games:Game[]
+  private game:Game
   
-  constructor(playfield:Playfield, notifierSlot:NotifierSlot, urlCardImages:string, urlCardBack:string, viewer:Player,
+  constructor(games:Game[], notifierSlot:NotifierSlot, urlCardImages:string, urlCardBack:string, viewer:Player,
               players:Player[], root:UISlotRoot) {
-    this.playfield = playfield
+    assert(games)
+    this.games = games
+    this.game = games[0]
     this.notifierSlot = notifierSlot
     this.urlCardImages = urlCardImages
     this.urlCardBack = urlCardBack
@@ -736,43 +738,29 @@ class App {
     return playfield
   }
 
+  send(data:any) {
+    if (this.peerConn) {
+      this.peerConn.send(data)
+    }
+  }
+  
+  newGame(idGame:string) {
+    const game = this.games.find(g => g.id == idGame)
+    if (!game) {
+      throw new Error("No such game " + idGame)
+    }
+
+    this.game = game
+    this.playfieldMutate(this.game.playfield())
+    this.viewerSet(this.viewer)
+  }
+
   viewerSet(viewer:Player) {
+    assert(this.game)
     this.viewer = viewer
 
-    const opponent = this.players.find(p => p != this.viewer)
-    
     this.root.clear()
-    const uislotTop = new UISlotFullWidth(opponent.idSlot, this, opponent, this.viewer, `${CARD_HEIGHT}px`)
-    uislotTop.init()
-    this.root.add(uislotTop)
-
-    // Refactor as UI element...
-    const divPlay = document.createElement("div")
-    divPlay.style.display = 'flex'
-    
-    const uislotWaste = new UISlotFullWidth('waste', this, null, this.viewer, CARD_HEIGHT*1.5+'px','100%',
-                                            ['slot', 'slot-overlap'], ['card', 'card-overlap'])
-    uislotWaste.init()
-    uislotWaste.element.style.flexGrow = "1"
-    divPlay.appendChild(uislotWaste.element)
-    
-    const divStock = document.createElement("div")
-    divStock.style.display = 'flex'
-    divStock.style.flexDirection = 'column'
-    const divStockSpacer = document.createElement("div")
-    divStockSpacer.style.flexGrow = "1"
-    divStock.appendChild(divStockSpacer)
-    const uislotStock = new UISlotSingle('stock', this, null, this.viewer, '',`${CARD_WIDTH}px`)
-    uislotStock.init()
-    divStock.appendChild(uislotStock.element)
-    divPlay.appendChild(divStock)
-
-    this.root.element.appendChild(divPlay)
-    
-    const uislotBottom = new UISlotFullWidth(this.viewer.idSlot, this, this.viewer, this.viewer, `${CARD_HEIGHT}px`)
-    uislotBottom.init()
-    this.root.add(uislotBottom)
-
+    this.game.makeUI(this)
     document.getElementById("player").innerText = this.viewer.name
 
     for (const slot of this.playfield.slots) {
@@ -782,6 +770,14 @@ class App {
 
   viewerGet() {
     return this.viewer
+  }
+
+  playersGet() {
+    return this.players
+  }
+
+  gameGet() {
+    return this.game
   }
 }
 
@@ -809,17 +805,18 @@ function host(app:App) {
 
     peer.on('connection', function(conn) {
       console.debug("Peer connected to us")
-      
-      // Receive messages
-      conn.on('data', function(data) {
+
+      function receive(data) {
         console.log('Received', data)
 
         if (data.ping) {
           document.getElementById("connect-status").dispatchEvent(new EventPingBack(data.ping.secs))
-          if (app.peerConn)
-            app.peerConn.send({ping_back: {secs: data.ping.secs}})
+          app.send({ping_back: {secs: data.ping.secs}})
         } else if (data.ping_back) {
           document.getElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
+        } else if (data.sync) {
+          app.newGame(data.sync.game)
+          receive({playfield: data.sync.playfield})
         } else {
           let updates:SlotUpdate[]
           let slots:Slot[]
@@ -836,7 +833,10 @@ function host(app:App) {
           
           app.playfieldMutate(app.playfieldGet().slotsUpdate(updates, app, false))
         }
-      });
+      }
+      
+      // Receive messages
+      conn.on('data', receive);
     })
   })
 
@@ -871,12 +871,8 @@ function connect(app:App) {
   }
 }
 
-function send(app:App) {
-  if (app.peerConn) {
-    app.peerConn.send({playfield: app.playfieldGet().serialize()})
-  } else {
-    console.error("No peer")
-  }
+function sync(app:App) {
+  app.send({sync: {game: app.gameGet().id, playfield: app.playfieldGet().serialize()}})
 }
 
 function revealAll(app:App) {
@@ -884,51 +880,136 @@ function revealAll(app:App) {
   app.playfieldMutate(app.playfieldGet().slotsUpdate(updates, app))
 }
 
-function newGameGinRummy(app:App) {
-  const deck = shuffled(deck52())
-  //    const deck = deck52()
-  const playfield = app.playfieldGet()
-  const updates:Array<SlotUpdate> = []
+interface Game {
+  readonly id:string
+  playfield():Playfield
+  makeUI(app:App)
+}
+
+class GameGinRummy implements Game {
+  readonly id = "gin-rummy"
   
-  updates.push([playfield.slot("p0"),
-                playfield.slot("p0").clear().add(sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true)))])
-
-  updates.push([playfield.slot("p1"),
-                playfield.slot("p1").clear().add(sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true)))])
-
-  updates.push([playfield.slot("stock"),
-                playfield.slot("stock").clear().add(deck.slice(20).map(c => new WorldCard(c, false)))])
-
-  updates.push([playfield.slot("waste"),
-                playfield.slot("waste").clear()])
+  playfield():Playfield {
+    const deck = shuffled(deck52())
+    return new Playfield(
+      [new Slot("p0", sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true))),
+       new Slot("p1", sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true))),
+       new Slot("waste"),
+       new Slot("stock", deck.slice(20).map(c => new WorldCard(c, false)))]
+    )
+  }
   
-  app.playfieldMutate(playfield.slotsUpdate(updates, app))
+  makeUI(app:App) {
+    const viewer = app.viewerGet()
+    const opponent = app.playersGet().find(p => p != viewer)
+    const root = app.root
+    
+    const uislotTop = new UISlotFullWidth(opponent.idSlot, app, opponent, viewer, `${CARD_HEIGHT}px`)
+    uislotTop.init()
+    root.add(uislotTop)
+
+    // Refactor as UI element...
+    const divPlay = document.createElement("div")
+    divPlay.style.display = 'flex'
+    
+    const uislotWaste = new UISlotFullWidth('waste', app, null, viewer, CARD_HEIGHT*1.5+'px','100%',
+                                            ['slot', 'slot-overlap'], ['card', 'card-overlap'])
+    uislotWaste.init()
+    uislotWaste.element.style.flexGrow = "1"
+    divPlay.appendChild(uislotWaste.element)
+    
+    const divStock = document.createElement("div")
+    divStock.style.display = 'flex'
+    divStock.style.flexDirection = 'column'
+    const divStockSpacer = document.createElement("div")
+    divStockSpacer.style.flexGrow = "1"
+    divStock.appendChild(divStockSpacer)
+    const uislotStock = new UISlotSingle('stock', app, null, viewer, '',`${CARD_WIDTH}px`)
+    uislotStock.init()
+    divStock.appendChild(uislotStock.element)
+    divPlay.appendChild(divStock)
+
+    root.element.appendChild(divPlay)
+    
+    const uislotBottom = new UISlotFullWidth(viewer.idSlot, app, viewer, viewer, `${CARD_HEIGHT}px`)
+    uislotBottom.init()
+    root.add(uislotBottom)
+  }
+}
+
+class GameDummy implements Game {
+  readonly id = "dummy"
+  
+  playfield():Playfield {
+    const deck = shuffled(deck52())
+    return new Playfield(
+      [new Slot("p0", sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true))),
+       new Slot("p1", sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true))),
+       new Slot("p0-meld"),
+       new Slot("p1-meld"),
+       new Slot("stock", deck.slice(20).map(c => new WorldCard(c, false)))]
+    )
+  }
+  
+  makeUI(app:App) {
+    const viewer = app.viewerGet()
+    const opponent = app.playersGet().find(p => p != viewer)
+    const root = app.root
+    
+    const uislotTop = new UISlotFullWidth(opponent.idSlot, app, opponent, viewer, `${CARD_HEIGHT}px`)
+    uislotTop.init()
+    root.add(uislotTop)
+
+    // Refactor as UI element...
+    const divPlay = document.createElement("div")
+    divPlay.style.display = 'flex'
+    
+    const uislotWaste = new UISlotFullWidth('waste', app, null, viewer, CARD_HEIGHT*1.5+'px','100%',
+                                            ['slot', 'slot-overlap'], ['card', 'card-overlap'])
+    uislotWaste.init()
+    uislotWaste.element.style.flexGrow = "1"
+    divPlay.appendChild(uislotWaste.element)
+    
+    const divStock = document.createElement("div")
+    divStock.style.display = 'flex'
+    divStock.style.flexDirection = 'column'
+    const divStockSpacer = document.createElement("div")
+    divStockSpacer.style.flexGrow = "1"
+    divStock.appendChild(divStockSpacer)
+    const uislotStock = new UISlotSingle('stock', app, null, viewer, '',`${CARD_WIDTH}px`)
+    uislotStock.init()
+    divStock.appendChild(uislotStock.element)
+    divPlay.appendChild(divStock)
+
+    root.element.appendChild(divPlay)
+    
+    const uislotBottom = new UISlotFullWidth(viewer.idSlot, app, viewer, viewer, `${CARD_HEIGHT}px`)
+    uislotBottom.init()
+    root.add(uislotBottom)
+  }
 }
 
 let appGlobal:App
 
 function run(urlCardImages:string, urlCardBack:string) {
-  let playfield = new Playfield(
-    [new Slot("p0"),
-     new Slot("p1"),
-     new Slot("stock"),
-     new Slot("waste")]
-  )
-
   const p0 = new Player('Player 1', 'p0')
   const p1 = new Player('Player 2', 'p1')
   
-  const app = new App(playfield, new NotifierSlot(), urlCardImages, urlCardBack, p0, [p0, p1],
+  const app = new App([new GameGinRummy()], new NotifierSlot(), urlCardImages, urlCardBack, p0, [p0, p1],
                       new UISlotRoot(document.getElementById("playfield")))
 
   appGlobal = app
 
   app.init()
   
-  document.getElementById("error").addEventListener("click", () => document.getElementById("error").innerHTML='')
+  document.getElementById("error").addEventListener(
+    "click",
+    () => document.getElementById("error").style.display = 'none'
+  )
+  
   document.getElementById("id-get").addEventListener("click", () => host(app))
   document.getElementById("connect").addEventListener("click", () => connect(app))
-  document.getElementById("send").addEventListener("click", () => send(app))
+  document.getElementById("sync").addEventListener("click", () => sync(app))
   document.getElementById("player-next").addEventListener("click", () => {
     if (app.viewerGet() == p0) {
       app.viewerSet(p1)
@@ -941,8 +1022,13 @@ function run(urlCardImages:string, urlCardBack:string) {
     function (e:EventPingBack) { this.innerHTML = `Connected for ${e.secs}s` }
   )
   
-  newGameGinRummy(app)
-  document.getElementById("game-new").addEventListener("click", () => newGameGinRummy(app))
+  document.getElementById("game-new").addEventListener(
+    "click",
+    () => {
+      app.newGame((document.getElementById("game-type") as HTMLFormElement).value)
+      sync(app)
+    }
+  )
   document.getElementById("reveal-all").addEventListener("click", () => revealAll(app))
 }
 
@@ -990,7 +1076,7 @@ function test() {
     )
 
     if (appGlobal.playfieldGet().slot("stock").isEmpty()) {
-      newGameGinRummy(appGlobal)
+      appGlobal.newGame(appGlobal.gameGet().id)
     }
     
     window.setTimeout(

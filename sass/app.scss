@@ -1,3 +1,10 @@
+body {
+	margin: 0px;
+}
+
+div {
+}
+
 .error {
 	color: red;
 	background-color: bisque;
@@ -38,7 +45,7 @@
 	box-shadow: inset 1px 1px 3px #228833;
 	margin-top: 5px;
 	// Pad bottom so cards can always be dropped there if the slot starts to get full.
-	padding-bottom: 50px;
+	padding: 5px 5px 50px 5px;
 }
 
 .slot-overlap {
@@ -61,9 +68,10 @@
 }
 
 #ui {
+	padding: 5px;
 	font-size: large;
 	box-shadow: inset 1px 1px 3px #777;
-	background: #999
+	background: #bbb
 }
 
 #ui div {
