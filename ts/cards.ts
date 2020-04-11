@@ -10,8 +10,8 @@ function errorHandler(message, source?, lineno?, colno?, error?, showAlert=true)
   return true
 }
 
-function assert(test, message='', ...args) {
-  if (!test) {
+function assert(test:() => any, message=test.toString(), ...args) {
+  if (!test()) {
     for (let arg of args) {
       message += JSON.stringify(arg) + " "
     }
@@ -42,7 +42,79 @@ abstract class Identified<T, IdType=string> {
   }
 }
 
-class Slot extends Identified<Slot> implements Iterable<WorldCard> {
+function slotFromSerialized(serialized:any) {
+  switch (serialized.type) {
+    case 'cards':
+      return SlotCards.fromSerialized(serialized)
+      break;
+    case 'container':
+      return SlotContainer.fromSerialized(serialized)
+      break;
+    default:
+      throw new Error("Unknown slot type: " + serialized)
+  }
+}
+
+abstract class Slot extends Identified<Slot> {
+  constructor(id:string) {
+    super(id)
+  }
+
+  abstract clear():Slot
+  abstract isEmpty():boolean
+  abstract hasCard(wcard:WorldCard):boolean
+  abstract cardById(idCard:string):WorldCard|undefined
+  abstract length():number
+  abstract map(f: (c: WorldCard) => WorldCard):Slot
+}
+
+class SlotContainer extends Slot {
+  readonly slots:SlotCards[] = []
+  
+  constructor(id:string, slots:SlotCards[] = []) {
+    super(id)
+    this.slots = slots
+  }
+
+  static fromSerialized(s:any):SlotContainer {
+    return new SlotContainer(s.id, s.slots.map(sl => SlotCards.fromSerialized(sl)))
+  }
+  
+  clear():SlotContainer {
+    return new SlotContainer(this.id)
+  }
+  
+  isEmpty():boolean {
+    return this.slots.every(s => s.isEmpty())
+  }
+  
+  hasCard(wcard:WorldCard):boolean {
+    return this.slots.some(s => s.hasCard(wcard))
+  }
+  
+  cardById(idCard:string):WorldCard|undefined {
+    for (const s of this.slots) {
+      const result = s.cardById(idCard)
+      if (result)
+        return result
+    }
+    return undefined
+  }
+  
+  length():number {
+    return this.slots.reduce((a, s) => a + s.length(), 0)
+  }
+  
+  map(f: (c: WorldCard) => WorldCard):SlotContainer {
+    return new SlotContainer(this.id, this.slots.flatMap(s => s.map(f)))
+  }
+
+  serialize():any {
+    return { ...super.serialize(), type: 'container', slots: this.slots.map(s => s.serialize()) }
+  }
+}
+
+class SlotCards extends Slot implements Iterable<WorldCard> {
   private cards:WorldCard[]
 
   constructor(id:string, cards:WorldCard[] = []) {
@@ -51,42 +123,42 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
   }
 
   static fromSerialized(serialized:any) {
-    return new Slot(serialized.id, serialized.cards.map(c => WorldCard.fromSerialized(c)))
+    return new SlotCards(serialized.id, serialized.cards.map(c => WorldCard.fromSerialized(c)))
   }
   
   add(wcards:WorldCard[], before?:Card):Slot {
     const idx = (() => {
       if (before) {
         const result = this.cards.findIndex(c => c.card.is(before))
-        assert(result != -1)
+        assert(() => result != -1)
         return result
       } else {
         return this.cards.length
       }
     })()
     
-    assert(wcards.every(wc => !this.cards.includes(wc)))
-    assert(idx >= 0 && idx <= this.cards.length)
-    return new Slot(this.id, this.cards.slice(0, idx).concat(wcards).concat(this.cards.slice(idx)))
+    assert(() => wcards.every(wc => !this.cards.includes(wc)))
+    assert(() => idx >= 0 && idx <= this.cards.length)
+    return new SlotCards(this.id, this.cards.slice(0, idx).concat(wcards).concat(this.cards.slice(idx)))
   }
 
-  remove(wcards:WorldCard[]):Slot {
-    assert(wcards.every(wc => this.cards.some(wc2 => wc.card.is(wc2.card))))
-    return new Slot(this.id, this.cards.filter(wc => !wcards.some(wc2 => wc.card.is(wc2.card))))
+  remove(wcards:WorldCard[]):SlotCards {
+    assert(() => wcards.every(wc => this.cards.some(wc2 => wc.card.is(wc2.card))))
+    return new SlotCards(this.id, this.cards.filter(wc => !wcards.some(wc2 => wc.card.is(wc2.card))))
   }
 
-  replace(wcard:WorldCard, wcard_:WorldCard):Slot {
+  replace(wcard:WorldCard, wcard_:WorldCard):SlotCards {
     const idx = this.cards.findIndex(c => c.card.is(wcard.card))
-    assert(idx != -1)
-    return new Slot(this.id, this.cards.slice(0, idx).concat([wcard_]).concat(this.cards.slice(idx+1)))
+    assert(() => idx != -1)
+    return new SlotCards(this.id, this.cards.slice(0, idx).concat([wcard_]).concat(this.cards.slice(idx+1)))
   }
 
   clear():Slot {
-    return new Slot(this.id, [])
+    return new SlotCards(this.id, [])
   }
   
   top():WorldCard {
-    assert(!this.isEmpty())
+    assert(() => !this.isEmpty())
     return this.cards[this.cards.length-1]
   }
 
@@ -95,7 +167,7 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
   }
 
   card(idx:number) {
-    assert(idx >= 0 && idx < this.cards.length)
+    assert(() => idx >= 0 && idx < this.cards.length)
     return this.cards[idx]
   }
 
@@ -111,8 +183,8 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
     return this.cards.length
   }
 
-  map(f: (c: WorldCard) => WorldCard): Slot {
-    return new Slot(this.id, this.cards.map(f))
+  map(f: (c: WorldCard) => WorldCard): SlotCards {
+    return new SlotCards(this.id, this.cards.map(f))
   }
   
   [Symbol.iterator]():Iterator<WorldCard> {
@@ -120,7 +192,7 @@ class Slot extends Identified<Slot> implements Iterable<WorldCard> {
   }
 
   serialize() {
-    return { ...super.serialize(), cards: this.cards.map(c => c.serialize()) }
+    return { ...super.serialize(), type: 'cards', cards: this.cards.map(c => c.serialize()) }
   }
 }
 
@@ -190,8 +262,8 @@ abstract class UISlot {
     return this.owner == null || viewer == this.owner
   }
   
-  slot(playfield:Playfield):Slot {
-    return playfield.slot(this.idSlot)
+  slot(playfield:Playfield):SlotCards {
+    return playfield.slot(this.idSlot, SlotCards)
   }
   
   onDragEnter(e:DragEvent) {
@@ -231,7 +303,7 @@ abstract class UISlot {
   private doMove(idCard:string) {
     const cardSrc = this.app.playfieldGet().wcard(idCard)
     const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
-    const slotDst = this.app.playfieldGet().slot(this.idSlot)
+    const slotDst:SlotCards = this.app.playfieldGet().slot(this.idSlot, SlotCards)
     // Two playfield mutates to simplify logic/reduce object creation? Or one mutate?
     if (slotSrc.is(slotDst)) {
       // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
@@ -264,8 +336,9 @@ abstract class UISlot {
 
 class UISlotSingle extends UISlot {
   readonly element:HTMLElement
-  readonly cards:HTMLElement
   readonly count:HTMLElement
+  private readonly height:string
+  private cards:HTMLElement
   
   constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string, width='100%') {
     super(document.createElement("div"), idSlot, app, owner, viewer)
@@ -274,23 +347,32 @@ class UISlotSingle extends UISlot {
     this.count = document.createElement("label")
     this.count.style.width='100%'
     this.element.appendChild(this.count)
+    this.height = height
     
-    this.cards = document.createElement("div")
-    this.cards.style.minHeight = height
+    this.cards = this.makeCardsDiv(this.height)
     this.element.appendChild(this.cards)
   }
 
-  change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
-    this.count.innerText = slot.length().toString()
-    this.cards.innerHTML = ''
+  change(urlImage:string, urlBack:string, slotOld:SlotCards, slot:SlotCards):void {
+    const cards = this.makeCardsDiv(this.height)
     if (!slot.isEmpty())
-      this.cards.appendChild(new UICard(slot.top(), this, this.app, false, this.viewer).element)
+      cards.appendChild(new UICard(slot.top(), this, this.app, false, this.viewer).element)
+    this.cards.replaceWith(cards)
+    this.cards = cards
+    this.count.innerText = slot.length().toString()
+  }
+
+  private makeCardsDiv(height):HTMLElement {
+    const result = document.createElement("div")
+    result.style.minHeight = height
+    return result
   }
 }
 
 class UISlotFullWidth extends UISlot {
   readonly element:HTMLElement
   private classesCard:string[]
+  private container:HTMLElement
   
   constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string, width='100%',
               classesSlot:string[]=['slot'], classesCard:string[]=['card']) {
@@ -299,13 +381,17 @@ class UISlotFullWidth extends UISlot {
     this.element.setAttribute("style", `width: ${width}; min-height: ${height};`)
     this.element.classList.add(...classesSlot)
     this.classesCard = classesCard
+    this.container = document.createElement("div")
+    this.element.appendChild(this.container)
   }
 
-  change(urlImage:string, urlBack:string, slotOld:Slot, slot:Slot):void {
-    this.element.innerHTML = ''
+  change(urlImage:string, urlBack:string, slotOld:SlotCards, slot:SlotCards):void {
+    const container = document.createElement("div")
     for (let wcard of slot) {
-      this.element.appendChild(new UICard(wcard, this, this.app, true, this.viewer, this.classesCard).element)
+      container.appendChild(new UICard(wcard, this, this.app, true, this.viewer, this.classesCard).element)
     }
+    this.container.replaceWith(container)
+    this.container = container
   }
 }
 
@@ -406,7 +492,7 @@ class UICard {
   }
   
   attach(parent:HTMLElement) {
-    console.assert(!this.element.parentNode)
+    console.assert(() => !this.element.parentNode)
     parent.appendChild(this.element)
   }
 
@@ -652,19 +738,22 @@ class Playfield {
   }
 
   static fromSerialized(serialized:any):Playfield {
-    return new Playfield(serialized.slots.map(s => Slot.fromSerialized(s)))
+    return new Playfield(serialized.slots.map(s => SlotCards.fromSerialized(s)))
   }
   
-  slot(id:string):Slot {
+  slot<T extends Slot>(id:string, klass:Function=Slot):T {
     const result = this.slots.find(s => s.isId(id))
-    assert(result)
-    return result
+    assert(() => result != undefined)
+    assert(() => result instanceof klass)
+    return result as T
   }
 
-  slotForCard(wcard:WorldCard) {
+  slotForCard(wcard:WorldCard):SlotCards {
     for (const slot of this.slots) {
-      if (slot.hasCard(wcard))
-        return slot
+      if (slot.hasCard(wcard)) {
+        assert(() => slot instanceof SlotCards)
+        return slot as SlotCards
+      }
     }
     throw new Error(`Card ${wcard.card.id} is not in a slot`)
   }
@@ -679,7 +768,7 @@ class Playfield {
   }
   
   slotsUpdate(slots:SlotUpdate[], app:App, send=true):Playfield {
-    assert(slots.every(([slot, _slot]) => slot.is(_slot) && this.slots.find(s => s.is(slot))))
+    assert(() => slots.every(([slot, _slot]) => slot.is(_slot) && this.slots.find(s => s.is(slot))))
     if (send) {
       app.send({slotUpdates: slots.map(([s, s_]) => [s.serialize(), s_.serialize()])})
     }
@@ -714,7 +803,7 @@ class App {
   
   constructor(games:Game[], notifierSlot:NotifierSlot, urlCardImages:string, urlCardBack:string, viewer:Player,
               players:Player[], root:UISlotRoot) {
-    assert(games)
+    assert(() => games)
     this.games = games
     this.game = games[0]
     this.notifierSlot = notifierSlot
@@ -756,7 +845,7 @@ class App {
   }
 
   viewerSet(viewer:Player) {
-    assert(this.game)
+    assert(() => this.game)
     this.viewer = viewer
 
     this.root.clear()
@@ -822,12 +911,12 @@ function host(app:App) {
           let slots:Slot[]
           
           if (data.slotUpdates != undefined) {
-            updates = data.slotUpdates.map(([s,s_]) => [Slot.fromSerialized(s), Slot.fromSerialized(s_)])
+            updates = data.slotUpdates.map(([s,s_]) => [slotFromSerialized(s), slotFromSerialized(s_)])
           } else {
             slots = Playfield.fromSerialized(data.playfield).slots
             updates = []
             for (const slot of slots) {
-              updates.push([app.playfieldGet().slot(slot.id), slot])
+              updates.push([app.playfieldGet().slot(slot.id, SlotCards), slot])
             }
           }
           
@@ -880,22 +969,23 @@ function revealAll(app:App) {
   app.playfieldMutate(app.playfieldGet().slotsUpdate(updates, app))
 }
 
-interface Game {
-  readonly id:string
-  playfield():Playfield
-  makeUI(app:App)
+abstract class Game extends Identified<Game> {
+  abstract playfield():Playfield
+  abstract makeUI(app:App)
 }
 
-class GameGinRummy implements Game {
-  readonly id = "gin-rummy"
+class GameGinRummy extends Game {
+  constructor() {
+    super("gin-rummy")
+  }
   
   playfield():Playfield {
     const deck = shuffled(deck52())
     return new Playfield(
-      [new Slot("p0", sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true))),
-       new Slot("p1", sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true))),
-       new Slot("waste"),
-       new Slot("stock", deck.slice(20).map(c => new WorldCard(c, false)))]
+      [new SlotCards("p0", sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true))),
+       new SlotCards("p1", sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true))),
+       new SlotCards("waste"),
+       new SlotCards("stock", deck.slice(20).map(c => new WorldCard(c, false)))]
     )
   }
   
@@ -937,18 +1027,20 @@ class GameGinRummy implements Game {
   }
 }
 
-class GameDummy implements Game {
-  readonly id = "dummy"
+class GameDummy extends Game {
+  constructor() {
+    super("dummy")
+  }
   
   playfield():Playfield {
     const deck = shuffled(deck52())
     return new Playfield(
-      [new Slot("p0", sortedByAltColorAndRank(deck.slice(0,13)).map(c => new WorldCard(c, true))),
-       new Slot("p1", sortedByAltColorAndRank(deck.slice(13,26)).map(c => new WorldCard(c, true))),
-       new Slot("p0-meld"),
-       new Slot("waste"),
-       new Slot("p1-meld"),
-       new Slot("stock", deck.slice(26).map(c => new WorldCard(c, false)))]
+      [new SlotCards("p0", sortedByAltColorAndRank(deck.slice(0,13)).map(c => new WorldCard(c, true))),
+       new SlotCards("p1", sortedByAltColorAndRank(deck.slice(13,26)).map(c => new WorldCard(c, true))),
+       new SlotCards("p0-meld"),
+       new SlotCards("waste"),
+       new SlotCards("p1-meld"),
+       new SlotCards("stock", deck.slice(26).map(c => new WorldCard(c, false)))]
     )
   }
   
@@ -1092,12 +1184,12 @@ function test() {
     appGlobal.playfieldMutate(
       playfield.slotsUpdate([
         [
-          playfield.slot("stock"),
-          playfield.slot("stock").remove([playfield.slot("stock").top()])
+          playfield.slot("stock", SlotCards),
+          playfield.slot<SlotCards>("stock", SlotCards).remove([playfield.slot<SlotCards>("stock", SlotCards).top()])
         ],
         [
-          playfield.slot("waste"),
-          playfield.slot("waste").add([playfield.slot("stock").top().withFaceUp(true)])
+          playfield.slot("waste", SlotCards),
+          playfield.slot<SlotCards>("waste", SlotCards).add([playfield.slot<SlotCards>("stock", SlotCards).top().withFaceUp(true)])
         ]
       ],
       appGlobal
