@@ -307,9 +307,12 @@ abstract class UIActionable {
 
 abstract class UISlot extends UIActionable {
   idSlot:number
+  readonly actionLongPress:string
   
-  constructor(element:HTMLElement, idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number) {
+  constructor(element:HTMLElement, idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number,
+              actionLongPress='flip') {
     super(element, idCnt, app, owner, viewer)
+    this.actionLongPress = actionLongPress
     if (idSlot === undefined)
       this.idSlot = app.playfieldGet().container(idCnt).first().id
     else
@@ -366,12 +369,12 @@ class UISlotSingle extends UISlot {
   private readonly height:string
   private cards:HTMLElement
   
-  constructor(idCnt:string, app:App, owner:Player|null, viewer:Player, height:string, idSlot?:number) {
-    super(document.createElement("div"), idCnt, app, owner, viewer, idSlot)
+  constructor(idCnt:string, app:App, owner:Player|null, viewer:Player, height:string, idSlot?:number,
+              actionLongPress='flip') {
+    super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress)
     this.element.classList.add("slot-single")
     this.element.style.width = CARD_WIDTH.toString()
     this.count = document.createElement("label")
-    this.count.style.width='100%'
     this.element.appendChild(this.count)
     this.height = height
     
@@ -401,9 +404,9 @@ class UISlotSpread extends UISlot {
   
   constructor(idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number,
               minHeight:string=`${CARD_HEIGHT}px`, width?:string, classesSlot:string[]=['slot'],
-              classesCard:string[]=['card']) {
+              classesCard:string[]=['card'], actionLongPress='flip') {
     
-    super(document.createElement("div"), idCnt, app, owner, viewer, idSlot)
+    super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress)
     this.classesCard = classesCard
     if (width)
       this.element.style.width = width
@@ -415,8 +418,11 @@ class UISlotSpread extends UISlot {
 
   change(slot:Slot|undefined, slot_:Slot):void {
     const container = this.containerEl.cloneNode(false) as HTMLElement
+    let zIndex = 0
     for (const wcard of slot_) {
-      container.appendChild(new UICard(wcard, this, this.app, true, this.viewer, this.classesCard).element)
+      const uicard = new UICard(wcard, this, this.app, true, this.viewer, this.classesCard)
+      uicard.element.style.zIndex = (zIndex++).toString()
+      container.appendChild(uicard.element)
     }
     this.containerEl.replaceWith(container)
     this.containerEl = container
@@ -441,11 +447,14 @@ abstract class UIContainer extends UIActionable {
 
 class UIContainerMulti extends UIContainer {
   private children:UISlot[] = []
+  private actionLongPress:string
   
-  constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string=`${CARD_HEIGHT}px`) {
+  constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string=`${CARD_HEIGHT}px`,
+              actionLongPress='flip') {
     super(document.createElement("div"), idSlot, app, owner, viewer)
     
     this.element.style.minHeight = height
+    this.actionLongPress = actionLongPress
   }
 
   onAction(selected:UICard) {
@@ -468,7 +477,7 @@ class UIContainerMulti extends UIContainer {
       if (!this.children.some(uislot => slot_.isId(uislot.idSlot))) {
         const uislot = new UISlotSpread(
           cnt.id, this.app, this.owner, this.viewer, slot_.id, `${CARD_HEIGHT}px`, `${CARD_WIDTH}px`,
-          ['slot', 'slot-overlap-vert'], ['card', 'card-overlap-vert']
+          ['slot', 'slot-overlap-vert'], ['card', 'card-overlap-vert'], this.actionLongPress
         )
 
         uislot.init()
@@ -505,21 +514,17 @@ class UICard {
     } else {
       svg.setAttribute('src', app.urlCardBack)
     }
+
+    if (wcard.turned) {
+      this.element.classList.add('turned')
+    }
     
     svg.setAttribute('width', CARD_WIDTH.toString())
     svg.setAttribute('height', CARD_HEIGHT.toString())
 
     this.element.appendChild(svg)
     
-    // Stop slots swallowing our mouse events
-    this.element.addEventListener("click", (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-    })
-
     function lpMouseUp(self, e) {
-      e.preventDefault()
-      e.stopPropagation()
       if (self.timerPress) {
         clearTimeout(self.timerPress)
         self.timerPress = null
@@ -547,6 +552,14 @@ class UICard {
       }
     })
 
+    // Stop slots acting on mouse events that this element has acted on.
+    this.element.addEventListener("click", (e) => {
+      if (this.dropTarget || !this.app.selected || this.app.selected == this) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    })
+
     // Stop press-on-image context menu on mobile browsers.
     this.element.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); })
   }
@@ -561,15 +574,20 @@ class UICard {
   }
 
   private onLongPress() {
-    this.flip()
+    if (this.uislot.actionLongPress == 'flip') {
+      this.flip()
+    } else {
+      this.turn()
+    }
   }
   
   private onClick() {
     if (this.app.selected) {
-      this.app.selected.element.classList.remove("selected")
-      if (this.dropTarget)
+      if (this.dropTarget) {
+        this.app.selected.element.classList.remove("selected")
         this.doMove(this.app.selected.wcard)
-      this.app.selected = null
+        this.app.selected = null
+      }
     } else {
       this.element.classList.add("selected")
       this.app.selected = this
@@ -579,6 +597,14 @@ class UICard {
   private flip() {
     const slot = this.uislot.slot(this.app.playfieldGet())
     const slot_ = slot.replace(this.wcard, this.wcard.withFaceStateConscious(!this.wcard.faceUp, this.wcard.faceUp))
+    this.app.playfieldMutate(
+      this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
+    )
+  }
+  
+  private turn() {
+    const slot = this.uislot.slot(this.app.playfieldGet())
+    const slot_ = slot.replace(this.wcard, this.wcard.withTurned(!this.wcard.turned))
     this.app.playfieldMutate(
       this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
     )
@@ -653,30 +679,38 @@ class WorldCard {
   readonly card:Card
   readonly faceUp:boolean
   readonly faceUpIsConscious:boolean
+  readonly turned:boolean
 
-  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false) {
+  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false) {
     this.card = card
     this.faceUp = faceUp
     this.faceUpIsConscious = faceUpIsConscious
+    this.turned = turned
   }
 
   static fromSerialized(serialized:any) {
-    return new WorldCard(Card.fromSerialized(serialized.card), serialized.faceUp, serialized.faceUpIsConscious)
+    return new WorldCard(Card.fromSerialized(serialized.card), serialized.faceUp, serialized.faceUpIsConscious,
+                        serialized.turned)
   }
   
   withFaceUp(faceUp:boolean) {
-    return new WorldCard(this.card, faceUp, this.faceUpIsConscious)
+    return new WorldCard(this.card, faceUp, this.faceUpIsConscious, this.turned)
   }
 
   withFaceStateConscious(faceUp:boolean, conscious:boolean) {
-    return new WorldCard(this.card, faceUp, conscious)
+    return new WorldCard(this.card, faceUp, conscious, this.turned)
+  }
+  
+  withTurned(turned:boolean) {
+    return new WorldCard(this.card, this.faceUp, this.faceUpIsConscious, turned)
   }
   
   serialize():any {
     return {
       card: this.card.serialize(),
       faceUp: this.faceUp,
-      faceUpIsConscious: this.faceUpIsConscious
+      faceUpIsConscious: this.faceUpIsConscious,
+      turned: this.turned
     }
   }
 }
@@ -1165,17 +1199,17 @@ class GameDummy extends Game {
     // Refactor as UI element...
     const divPlay = document.createElement("div")
     divPlay.style.display = 'flex'
+    divPlay.style.flexDirection = 'column'
+    
+    const uislotMeldOpp = new UIContainerMulti(opponent.idSlot+'-meld', app, null, viewer, `${CARD_HEIGHT}px`, 'turn')
+    uislotMeldOpp.init()
+    uislotMeldOpp.element.style.flexGrow = "1"
+    divPlay.appendChild(uislotMeldOpp.element)
     
     const divWaste = document.createElement("div")
     divWaste.style.display = 'flex'
-    divWaste.style.flexDirection = 'column'
     divWaste.style.flexGrow = "1"
     divPlay.appendChild(divWaste)
-    
-    const uislotMeldOpp = new UIContainerMulti(opponent.idSlot+'-meld', app, null, viewer)
-    uislotMeldOpp.init()
-    uislotMeldOpp.element.style.flexGrow = "1"
-    divWaste.appendChild(uislotMeldOpp.element)
     
     const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT+'px', '100%',
                                          ['slot', 'slot-overlap'], ['card', 'card-overlap'])
@@ -1183,24 +1217,16 @@ class GameDummy extends Game {
     uislotWaste.element.style.flexGrow = "1"
     divWaste.appendChild(uislotWaste.element)
     
-    const uislotMeldPlay = new UIContainerMulti(viewer.idSlot+'-meld', app, null, viewer)
-    uislotMeldPlay.init()
-    uislotMeldPlay.element.style.flexGrow = "1"
-    divWaste.appendChild(uislotMeldPlay.element)
-    
-    const divStock = document.createElement("div")
-    divStock.style.display = 'flex'
-    divStock.style.flexDirection = 'column'
-    const divStockSpacer = document.createElement("div")
-    divStockSpacer.style.flexGrow = "1"
-    divStock.appendChild(divStockSpacer)
-    
     const uislotStock = new UISlotSingle('stock', app, null, viewer, '', undefined)
     uislotStock.init()
-    uislotStock.element.style.flexGrow = "1" // hack
-    divStock.appendChild(uislotStock.element)
-    divPlay.appendChild(divStock)
+    uislotStock.element.style.marginTop = 'auto'
+    divWaste.appendChild(uislotStock.element)
 
+    const uislotMeldPlay = new UIContainerMulti(viewer.idSlot+'-meld', app, null, viewer, `${CARD_HEIGHT}px`, 'turn')
+    uislotMeldPlay.init()
+    uislotMeldPlay.element.style.flexGrow = "1"
+    divPlay.appendChild(uislotMeldPlay.element)
+    
     root.element.appendChild(divPlay)
     
     const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, '100%')

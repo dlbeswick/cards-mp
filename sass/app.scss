@@ -43,6 +43,7 @@ div {
 .slot {
 	display: inline-block;
 	background: #22aa33;
+	border: solid 1px #228833;
 	box-shadow: inset 1px 1px 3px #228833;
 	margin-top: 5px;
 	// Pad bottom so cards can always be dropped there if the slot starts to get full.
@@ -55,23 +56,35 @@ div {
 	padding-right: 50px;
 }
 
+.slot-overlap-vert  {
+	box-sizing: content-box;
+	vertical-align: top;
+}
+
 .slot-overlap-vert > div {
 	// Increase padding by reverse of card overlap margin, so cards wrap appropriately.
 	// Plus a little extra for placing new cards.
-	padding-bottom: 120px;
+	padding-bottom: 90px;
 	width: 74px;
-	display: flex;
-	flex-direction: column;
 }
 
-.slot-single label {
-	display: block;
-	font-family: "sans";
-	background: #dddddd;
+.slot-single {
+	padding-bottom: 0;
+						
+	label {
+		display: block;
+		font-family: "sans";
+		background: #dddddd;
+		width: 100%;
+	}
 }
 
 .card {
 	display: inline-block;
+}
+
+.card.turned img {
+	transform: rotate(-90deg) translate(20px);
 }
 
 .card-overlap {
@@ -80,6 +93,8 @@ div {
 
 .card-overlap-vert {
 	margin-bottom: -90px;
+	display: block;
+	position: relative; // enable z-ordering
 }
 
 #ui {
