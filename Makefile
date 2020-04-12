@@ -27,7 +27,7 @@ www/css :
 	mkdir -p $@
 
 www/js/app.js : $(SRC)
-	"$(TYPESCRIPT)" --noEmitOnError --alwaysStrict --target es2019 --outFile $@ $<
+	"$(TYPESCRIPT)" --noEmitOnError --alwaysStrict --strictNullChecks --target es2019 --outFile $@ $<
 
 www/css/app.css : sass/app.scss
 	"$(SASS)" $<:$@

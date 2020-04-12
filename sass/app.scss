@@ -54,9 +54,10 @@ div {
 	padding-right: 50px;
 }
 
-.slot-overlap-vert {
+.slot-overlap-vert > div {
 	// Increase padding by reverse of card overlap margin, so cards wrap appropriately.
-	padding-bottom: 90px;
+	// Plus a little extra for placing new cards.
+	padding-bottom: 120px;
 	width: 74px;
 	display: flex;
 	flex-direction: column;
