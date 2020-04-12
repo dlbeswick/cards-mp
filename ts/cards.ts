@@ -1099,7 +1099,7 @@ class GameGinRummy extends Game {
     assert(() => opponent)
     const root = app.root
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
+    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
     uislotTop.init()
     root.add(uislotTop)
 
@@ -1107,7 +1107,7 @@ class GameGinRummy extends Game {
     const divPlay = document.createElement("div")
     divPlay.style.display = 'flex'
     
-    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT*1.5+'px', undefined,
+    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT*1.5+'px', '100%',
                                          ['slot', 'slot-overlap'], ['card', 'card-overlap'])
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
@@ -1126,7 +1126,7 @@ class GameGinRummy extends Game {
 
     root.element.appendChild(divPlay)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
+    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
   }
@@ -1144,9 +1144,9 @@ class GameDummy extends Game {
                                          sortedByAltColorAndRank(deck.slice(0,13)).map(c => new WorldCard(c, true)))]),
        new ContainerSlot("p1", [new Slot(Date.now(), "p1",
                                          sortedByAltColorAndRank(deck.slice(13,26)).map(c => new WorldCard(c, true)))]),
-       new ContainerSlot("p0-meld"),
+       new ContainerSlot("p0-meld", []),
        new ContainerSlot("waste"),
-       new ContainerSlot("p1-meld"),
+       new ContainerSlot("p1-meld", []),
        new ContainerSlot("stock", [new Slot(Date.now(), "stock",
                                             deck.slice(26).map(c => new WorldCard(c, false)))])]
     )
@@ -1158,7 +1158,7 @@ class GameDummy extends Game {
     assert(() => opponent)
     const root = app.root
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
+    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
     uislotTop.init()
     root.add(uislotTop)
 
@@ -1177,7 +1177,7 @@ class GameDummy extends Game {
     uislotMeldOpp.element.style.flexGrow = "1"
     divWaste.appendChild(uislotMeldOpp.element)
     
-    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT+'px', undefined,
+    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT+'px', '100%',
                                          ['slot', 'slot-overlap'], ['card', 'card-overlap'])
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
@@ -1203,7 +1203,7 @@ class GameDummy extends Game {
 
     root.element.appendChild(divPlay)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
+    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
   }

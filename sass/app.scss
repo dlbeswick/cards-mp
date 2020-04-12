@@ -38,7 +38,6 @@ div {
 
 #playfield {
 	background: #22cc33;
-	width:100%;
 }
 
 .slot {
@@ -48,6 +47,7 @@ div {
 	margin-top: 5px;
 	// Pad bottom so cards can always be dropped there if the slot starts to get full.
 	padding: 5px 7px 50px 7px;
+	box-sizing: border-box;
 }
 
 .slot-overlap {
