@@ -7,7 +7,7 @@ function demandElementByIdTyped<T extends HTMLElement>(id:string, klass:new() =>
   if (result == undefined) {
     throw new Error(`Element '${id}' not found`)
   } else if (!(result instanceof klass)) {
-    throw new Error(`Element '${id}' is not '${klass}', but is '${typeof result}'`)
+    throw new Error(`Element '${id}' is not '${klass}', but is '${result.constructor.name}'`)
   } else {
     return result
   }
@@ -901,8 +901,8 @@ class App {
     this.root = root
   }
 
-  init() {
-    this.newGame(this.game.id)
+  init(gameId:string) {
+    this.newGame(gameId)
   }
   
   playfieldGet():Playfield {
@@ -1099,7 +1099,7 @@ class GameGinRummy extends Game {
     assert(() => opponent)
     const root = app.root
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
+    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
     uislotTop.init()
     root.add(uislotTop)
 
@@ -1126,7 +1126,7 @@ class GameGinRummy extends Game {
 
     root.element.appendChild(divPlay)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
+    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
     uislotBottom.init()
     root.add(uislotBottom)
   }
@@ -1158,7 +1158,7 @@ class GameDummy extends Game {
     assert(() => opponent)
     const root = app.root
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
+    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
     uislotTop.init()
     root.add(uislotTop)
 
@@ -1203,7 +1203,7 @@ class GameDummy extends Game {
 
     root.element.appendChild(divPlay)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`,'100%')
+    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, undefined)
     uislotBottom.init()
     root.add(uislotBottom)
   }
@@ -1217,8 +1217,8 @@ function run(urlCardImages:string, urlCardBack:string) {
   
   const app = new App(
     [
-      new GameDummy(),
       new GameGinRummy(),
+      new GameDummy(),
     ],
     new NotifierSlot(),
     urlCardImages,
@@ -1230,7 +1230,7 @@ function run(urlCardImages:string, urlCardBack:string) {
 
   appGlobal = app
 
-  app.init()
+  app.init(demandElementByIdTyped("game-type", HTMLSelectElement).value)
   
   demandElementById("error").addEventListener(
     "click",
@@ -1255,7 +1255,7 @@ function run(urlCardImages:string, urlCardBack:string) {
   demandElementById("game-new").addEventListener(
     "click",
     () => {
-      app.newGame((demandElementById("game-type") as HTMLFormElement).value)
+      app.newGame(demandElementByIdTyped("game-type", HTMLSelectElement).value)
       sync(app)
     }
   )

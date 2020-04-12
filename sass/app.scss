@@ -19,7 +19,7 @@ div {
 
 .card.selected img {
 //  animation: glow 2.0s;
-  filter: drop-shadow(0px 0px 20px red);
+  filter: invert(100%);
 }
 
 @keyframes glow {
@@ -38,6 +38,7 @@ div {
 
 #playfield {
 	background: #22cc33;
+	width:100%;
 }
 
 .slot {
@@ -46,7 +47,7 @@ div {
 	box-shadow: inset 1px 1px 3px #228833;
 	margin-top: 5px;
 	// Pad bottom so cards can always be dropped there if the slot starts to get full.
-	padding: 5px 5px 50px 5px;
+	padding: 5px 7px 50px 7px;
 }
 
 .slot-overlap {
