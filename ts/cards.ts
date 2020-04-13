@@ -284,7 +284,7 @@ abstract class UIActionable {
     this.element.addEventListener("click", this.onClick.bind(this))
   }
 
-  protected abstract onAction(selected:UICard):void
+  protected abstract onAction(selected:UICard[]):void
 
   container(playfield:Playfield):ContainerSlot {
     return playfield.container(this.idCnt)
@@ -299,7 +299,7 @@ abstract class UIActionable {
     e.stopPropagation()
     if (this.app.selected) {
       this.onAction(this.app.selected)
-      this.app.selected.element.classList.remove("selected")
+      this.app.selected.forEach(s => s.select(false))
       this.app.selected = null
     }
   }
@@ -308,11 +308,17 @@ abstract class UIActionable {
 abstract class UISlot extends UIActionable {
   idSlot:number
   readonly actionLongPress:string
+  private selectionMode:string
+  protected children:UICard[] = []
   
   constructor(element:HTMLElement, idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number,
-              actionLongPress='flip') {
+              actionLongPress='flip', selectionMode='single') {
+
     super(element, idCnt, app, owner, viewer)
+    
     this.actionLongPress = actionLongPress
+    this.selectionMode = selectionMode
+    
     if (idSlot === undefined)
       this.idSlot = app.playfieldGet().container(idCnt).first().id
     else
@@ -329,38 +335,54 @@ abstract class UISlot extends UIActionable {
 
   abstract change(slot:Slot|undefined, slot_:Slot):void
   
+  onCardClicked(uicard:UICard) {
+    if (this.selectionMode == 'all-proceeding') {
+      const selectedIdx = this.children.indexOf(uicard)
+      if (selectedIdx != -1) {
+        const uicards = this.children.slice(selectedIdx+1)
+        uicards.forEach(uicard => uicard.select())
+        this.app.selected = (this.app.selected || []).concat(uicards)
+      }
+    }
+  }
+  
   slot(playfield:Playfield):Slot {
     return this.container(playfield).slot(this.idSlot)
   }
   
-  protected doMove(idCard:string) {
-    const cardSrc = this.app.playfieldGet().wcard(idCard)
-    const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
+  protected doMove(uiCards:UICard[]) {
+    const cardsSrc = uiCards.map(ui => ui.wcard)
+    assert(() => cardsSrc.length)
+    const slotSrc = this.app.playfieldGet().slotForCard(cardsSrc[0])
     const slotDst = this.slot(this.app.playfieldGet())
     if (slotSrc === slotDst) {
       // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
-      const slotSrc_ = slotSrc.remove([cardSrc]).add([cardSrc])
+      const slotSrc_ = slotSrc.remove(cardsSrc).add(cardsSrc)
       this.app.playfieldMutate(
         this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_]], this.app)
       )
     } else {
       // case 2: diff slot. Always flip face-up, unless a human player has deliberately flipped it.
-      let faceUp
-      if (cardSrc.faceUpIsConscious)
-        faceUp = cardSrc.faceUp
-      else
-        faceUp = true
       
-      const slotSrc_ = slotSrc.remove([cardSrc])
-      const slotDst_ = slotDst.add([cardSrc.withFaceUp(faceUp)])
+      const slotSrc_ = slotSrc.remove(cardsSrc)
+      
+      const slotDst_ = slotDst.add(cardsSrc.map(wc => {
+        let faceUp
+        if (cardsSrc[0].faceUpIsConscious)
+          faceUp = cardsSrc[0].faceUp
+        else
+          faceUp = true
+        return wc.withFaceUp(faceUp)
+      }))
+      
       this.app.playfieldMutate(
         this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app)
       )
     }
   }
 
-  protected onAction(selected:UICard) {
-    this.doMove(selected.wcard.card.id)
+  protected onAction(selected:UICard[]) {
+    this.doMove(selected)
   }
 }
 
@@ -404,9 +426,9 @@ class UISlotSpread extends UISlot {
   
   constructor(idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number,
               minHeight:string=`${CARD_HEIGHT}px`, width?:string, classesSlot:string[]=['slot'],
-              classesCard:string[]=['card'], actionLongPress='flip') {
+              classesCard:string[]=['card'], actionLongPress='flip', selectionMode='single') {
     
-    super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress)
+    super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress, selectionMode)
     this.classesCard = classesCard
     if (width)
       this.element.style.width = width
@@ -418,10 +440,12 @@ class UISlotSpread extends UISlot {
 
   change(slot:Slot|undefined, slot_:Slot):void {
     const container = this.containerEl.cloneNode(false) as HTMLElement
+    this.children = []
     let zIndex = 0
     for (const wcard of slot_) {
       const uicard = new UICard(wcard, this, this.app, true, this.viewer, this.classesCard)
       uicard.element.style.zIndex = (zIndex++).toString()
+      this.children.push(uicard)
       container.appendChild(uicard.element)
     }
     this.containerEl.replaceWith(container)
@@ -457,12 +481,13 @@ class UIContainerMulti extends UIContainer {
     this.actionLongPress = actionLongPress
   }
 
-  onAction(selected:UICard) {
-    const cardSrc = selected.wcard
-    const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
-    const slotSrc_ = slotSrc.remove([cardSrc])
+  onAction(selected:UICard[]) {
+    assert(() => selected.length)
+    const cardsSrc = selected.map(ui => ui.wcard)
+    const slotSrc = this.app.playfieldGet().slotForCard(cardsSrc[0])
+    const slotSrc_ = slotSrc.remove(cardsSrc)
     const cnt:ContainerSlot = this.container(this.app.playfieldGet())
-    const slotDst_ = new Slot(Date.now(), cnt.id, [cardSrc])
+    const slotDst_ = new Slot(Date.now(), cnt.id, cardsSrc)
     
     this.app.playfieldMutate(
       this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [undefined, slotDst_]], this.app)
@@ -554,7 +579,7 @@ class UICard {
 
     // Stop slots acting on mouse events that this element has acted on.
     this.element.addEventListener("click", (e) => {
-      if (this.dropTarget || !this.app.selected || this.app.selected == this) {
+      if (this.dropTarget || !this.app.selected || this.app.selected.includes(this)) {
         e.preventDefault()
         e.stopPropagation()
       }
@@ -573,6 +598,13 @@ class UICard {
     parent.appendChild(this.element)
   }
 
+  select(selected:boolean=true) {
+    if (selected)
+      this.element.classList.add("selected")
+    else
+      this.element.classList.remove("selected")
+  }
+  
   private onLongPress() {
     if (this.uislot.actionLongPress == 'flip') {
       this.flip()
@@ -584,13 +616,16 @@ class UICard {
   private onClick() {
     if (this.app.selected) {
       if (this.dropTarget) {
-        this.app.selected.element.classList.remove("selected")
-        this.doMove(this.app.selected.wcard)
+        this.app.selected.forEach(s => s.select(false))
+        if (!this.app.selected.includes(this)) {
+          this.doMove(this.app.selected)
+        }
         this.app.selected = null
       }
     } else {
-      this.element.classList.add("selected")
-      this.app.selected = this
+      this.select()
+      this.app.selected = [this]
+      this.uislot.onCardClicked(this)
     }
   }
   
@@ -610,24 +645,23 @@ class UICard {
     )
   }
   
-  private doMove(cardSrc:WorldCard) {
-    if (!cardSrc.card.is(this.wcard.card)) {
-      const slotSrc = this.app.playfieldGet().slotForCard(cardSrc)
-      const slotDst = this.uislot.slot(this.app.playfieldGet())
+  private doMove(uicards:UICard[]) {
+    assert(() => uicards.length)
+    const cardsSrc = uicards.map(ui => ui.wcard)
+    const slotSrc = this.app.playfieldGet().slotForCard(cardsSrc[0])
+    const slotDst = this.uislot.slot(this.app.playfieldGet())
 
-      if (slotSrc === slotDst) {
-        const slot = this.app.playfieldGet().slotForCard(cardSrc)
-        const slot_ = slot.remove([cardSrc]).add([cardSrc], this.wcard.card)
-        this.app.playfieldMutate(
-          this.app.playfieldGet().slotsUpdate([[slot, slot_]], this.app)
-        )
-      } else {
-        const slotSrc_ = slotSrc.remove([cardSrc])
-        const slotDst_ = slotDst.add([cardSrc], this.wcard.card)
-        this.app.playfieldMutate(
-          this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app)
-        )
-      }
+    if (slotSrc === slotDst) {
+      const slot_ = slotSrc.remove(cardsSrc).add(cardsSrc, this.wcard.card)
+      this.app.playfieldMutate(
+        this.app.playfieldGet().slotsUpdate([[slotSrc, slot_]], this.app)
+      )
+    } else {
+      const slotSrc_ = slotSrc.remove(cardsSrc)
+      const slotDst_ = slotDst.add(cardsSrc, this.wcard.card)
+      this.app.playfieldMutate(
+        this.app.playfieldGet().slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.app)
+      )
     }
   }
 }
@@ -911,7 +945,7 @@ declare var Peer
 class App {
   peer:any
   peerConn:any
-  selected:UICard|null = null
+  selected:UICard[]|null
   readonly notifierSlot:NotifierSlot
   readonly urlCardImages:string
   readonly urlCardBack:string
@@ -1212,7 +1246,7 @@ class GameDummy extends Game {
     divPlay.appendChild(divWaste)
     
     const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT+'px', '100%',
-                                         ['slot', 'slot-overlap'], ['card', 'card-overlap'])
+                                         ['slot', 'slot-overlap'], ['card', 'card-overlap'], 'flip', 'all-proceeding')
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
     divWaste.appendChild(uislotWaste.element)
