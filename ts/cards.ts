@@ -1,5 +1,3 @@
-const CARD_WIDTH = 74
-const CARD_HEIGHT = 112
 type SlotUpdate = [Slot|undefined, Slot]
 
 function demandElementByIdTyped<T extends HTMLElement>(id:string, klass:new() => T):T {
@@ -395,7 +393,7 @@ class UISlotSingle extends UISlot {
               actionLongPress='flip') {
     super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress)
     this.element.classList.add("slot-single")
-    this.element.style.width = CARD_WIDTH.toString()
+    this.element.style.width = app.cardWidthGet().toString()
     this.count = document.createElement("label")
     this.element.appendChild(this.count)
     this.height = height
@@ -425,7 +423,7 @@ class UISlotSpread extends UISlot {
   private containerEl:HTMLElement
   
   constructor(idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number,
-              minHeight:string=`${CARD_HEIGHT}px`, width?:string, classesSlot:string[]=['slot'],
+              minHeight:string=`${app.cardHeightGet()}px`, width?:string, classesSlot:string[]=['slot'],
               classesCard:string[]=['card'], actionLongPress='flip', selectionMode='single') {
     
     super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress, selectionMode)
@@ -473,7 +471,7 @@ class UIContainerMulti extends UIContainer {
   private children:UISlot[] = []
   private actionLongPress:string
   
-  constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string=`${CARD_HEIGHT}px`,
+  constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string=`${app.cardHeightGet()}px`,
               actionLongPress='flip') {
     super(document.createElement("div"), idSlot, app, owner, viewer)
     
@@ -501,7 +499,7 @@ class UIContainerMulti extends UIContainer {
     for (const [slot, slot_] of updates) {
       if (!this.children.some(uislot => slot_.isId(uislot.idSlot))) {
         const uislot = new UISlotSpread(
-          cnt.id, this.app, this.owner, this.viewer, slot_.id, `${CARD_HEIGHT}px`, `${CARD_WIDTH}px`,
+          cnt.id, this.app, this.owner, this.viewer, slot_.id, `${this.app.cardHeightGet()}px`, `${this.app.cardWidthGet()}px`,
           ['slot', 'slot-overlap-vert'], ['card', 'card-overlap-vert'], this.actionLongPress
         )
 
@@ -544,8 +542,8 @@ class UICard {
       this.element.classList.add('turned')
     }
     
-    svg.setAttribute('width', CARD_WIDTH.toString())
-    svg.setAttribute('height', CARD_HEIGHT.toString())
+    svg.setAttribute('width', app.cardWidthGet().toString())
+    svg.setAttribute('height', app.cardHeightGet().toString())
 
     this.element.appendChild(svg)
     
@@ -950,6 +948,8 @@ class App {
   readonly urlCardImages:string
   readonly urlCardBack:string
   readonly root:UISlotRoot
+  private cardWidth = 74
+  private cardHeight = 112
   private viewer:Player
   private playfield:Playfield = new Playfield([])
   private players:Player[]
@@ -969,7 +969,7 @@ class App {
     this.root = root
   }
 
-  init(gameId:string) {
+  run(gameId:string) {
     this.newGame(gameId)
   }
   
@@ -1003,6 +1003,14 @@ class App {
     this.viewerSet(this.viewer)
   }
 
+  cardSizeSet(width:number, height:number) {
+    this.cardWidth = width
+    this.cardHeight = height
+  }
+
+  cardWidthGet() { return this.cardWidth }
+  cardHeightGet() { return this.cardHeight }
+  
   viewerSet(viewer:Player) {
     assert(() => this.game)
     this.viewer = viewer
@@ -1167,7 +1175,7 @@ class GameGinRummy extends Game {
     assert(() => opponent)
     const root = app.root
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
+    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotTop.init()
     root.add(uislotTop)
 
@@ -1175,7 +1183,7 @@ class GameGinRummy extends Game {
     const divPlay = document.createElement("div")
     divPlay.style.display = 'flex'
     
-    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT*1.5+'px', '100%',
+    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px', '100%',
                                          ['slot', 'slot-overlap'], ['card', 'card-overlap'])
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
@@ -1194,7 +1202,7 @@ class GameGinRummy extends Game {
 
     root.element.appendChild(divPlay)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
+    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
   }
@@ -1226,7 +1234,7 @@ class GameDummy extends Game {
     assert(() => opponent)
     const root = app.root
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
+    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotTop.init()
     root.add(uislotTop)
 
@@ -1235,37 +1243,39 @@ class GameDummy extends Game {
     divPlay.style.display = 'flex'
     divPlay.style.flexDirection = 'column'
     
-    const uislotMeldOpp = new UIContainerMulti(opponent.idSlot+'-meld', app, null, viewer, `${CARD_HEIGHT}px`, 'turn')
+    const uislotMeldOpp = new UIContainerMulti(opponent.idSlot+'-meld', app, null, viewer, `${app.cardHeightGet()}px`, 'turn')
     uislotMeldOpp.init()
     uislotMeldOpp.element.style.flexGrow = "1"
     divPlay.appendChild(uislotMeldOpp.element)
     
-    const divWaste = document.createElement("div")
-    divWaste.style.display = 'flex'
-    divWaste.style.flexGrow = "1"
-    divPlay.appendChild(divWaste)
-    
-    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, CARD_HEIGHT+'px', '100%',
+    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()+'px', '100%',
                                          ['slot', 'slot-overlap'], ['card', 'card-overlap'], 'flip', 'all-proceeding')
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
-    divWaste.appendChild(uislotWaste.element)
+    divPlay.appendChild(uislotWaste.element)
     
-    const uislotStock = new UISlotSingle('stock', app, null, viewer, '', undefined)
-    uislotStock.init()
-    uislotStock.element.style.marginTop = 'auto'
-    divWaste.appendChild(uislotStock.element)
-
-    const uislotMeldPlay = new UIContainerMulti(viewer.idSlot+'-meld', app, null, viewer, `${CARD_HEIGHT}px`, 'turn')
+    const uislotMeldPlay = new UIContainerMulti(viewer.idSlot+'-meld', app, null, viewer, `${app.cardHeightGet()}px`,
+                                                'turn')
     uislotMeldPlay.init()
     uislotMeldPlay.element.style.flexGrow = "1"
     divPlay.appendChild(uislotMeldPlay.element)
     
     root.element.appendChild(divPlay)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${CARD_HEIGHT}px`, '100%')
+    const divCombiner = document.createElement("div")
+    divCombiner.style.display = 'flex'
+    divCombiner.style.flexGrow = "1"
+    divPlay.appendChild(divCombiner)
+    
+    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${app.cardHeightGet()}px`,
+                                          '100%')
     uislotBottom.init()
     root.add(uislotBottom)
+
+    const uislotStock = new UISlotSingle('stock', app, null, viewer, '', undefined)
+    uislotStock.init()
+    uislotStock.element.style.marginTop = 'auto'
+    root.add(uislotStock)
   }
 }
 
@@ -1290,8 +1300,6 @@ function run(urlCardImages:string, urlCardBack:string) {
 
   appGlobal = app
 
-  app.init(demandElementByIdTyped("game-type", HTMLSelectElement).value)
-  
   demandElementById("error").addEventListener(
     "click",
     () => demandElementById("error").style.display = 'none'
@@ -1320,12 +1328,23 @@ function run(urlCardImages:string, urlCardBack:string) {
     }
   )
   demandElementById("reveal-all").addEventListener("click", () => revealAll(app))
+
+  function cardSizeSet() {
+    const [width, height] = JSON.parse(demandElementByIdTyped("card-size", HTMLSelectElement).value)
+    app.cardSizeSet(width, height)
+  }
+  demandElementById("card-size").addEventListener("change", (e) => {
+    cardSizeSet()
+    app.viewerSet(app.viewerGet())
+  })
+  cardSizeSet()
+
+  app.run(demandElementByIdTyped("game-type", HTMLSelectElement).value)
 }
 
 document.addEventListener("deviceready", () => {
   run("img/cards.svg", "img/back.svg")
 
-  // Create a PeerConnection with no streams, but force a m=audio line.
   const config:RTCConfiguration = {
     iceServers: [],
     iceTransportPolicy: "all",
