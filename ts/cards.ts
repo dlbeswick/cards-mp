@@ -328,7 +328,7 @@ abstract class UISlot extends UIActionable {
     this.app.notifierSlot.slot(this.idCnt, this.idSlot).addEventListener(
       "slotchange",
       (e:EventSlotChange) => {
-        this.change(e.slot(), e.slot_())
+        this.change(EventSlotChange.slot(e), EventSlotChange.slot_(e))
       }
     )
   }
@@ -368,8 +368,8 @@ abstract class UISlot extends UIActionable {
       
       const slotDst_ = slotDst.add(cardsSrc.map(wc => {
         let faceUp
-        if (cardsSrc[0].faceUpIsConscious)
-          faceUp = cardsSrc[0].faceUp
+        if (wc.faceUpIsConscious)
+          faceUp = wc.faceUp
         else
           faceUp = true
         return wc.withFaceUp(faceUp)
@@ -461,7 +461,7 @@ abstract class UIContainer extends UIActionable {
     this.app.notifierSlot.container(this.idCnt).addEventListener(
       "containerchange",
       (e:EventContainerChange) => {
-        this.change(e.container(), e.container_(), e.updates)
+        this.change(EventContainerChange.container(e), EventContainerChange.container_(e), e.updates)
       }
     )
   }
@@ -604,7 +604,7 @@ class UICard {
     else
       this.element.classList.remove("selected")
   }
-  
+
   private onLongPress() {
     if (this.uislot.actionLongPress == 'flip') {
       this.flip()
@@ -614,15 +614,15 @@ class UICard {
   }
   
   private onClick() {
-    if (this.app.selected) {
-      if (this.dropTarget) {
-        this.app.selected.forEach(s => s.select(false))
-        if (!this.app.selected.includes(this)) {
-          this.doMove(this.app.selected)
-        }
-        this.app.selected = null
-      }
-    } else {
+    this.app.selected?.forEach(s => s.select(false))
+    // This logic is necessary to allow non-drop targets (single slot) to have this action fall through to the slot.
+    if (this.dropTarget && this.app.selected && !this.app.selected.includes(this)) {
+      this.doMove(this.app.selected as UICard[])
+      this.app.selected = null
+    } else if (this.app.selected && this.app.selected.includes(this)) {
+      this.app.selected.forEach(s => s.select(false))
+      this.app.selected = null
+    } else if (!this.app.selected) {
       this.select()
       this.app.selected = [this]
       this.uislot.onCardClicked(this)
@@ -803,15 +803,15 @@ class EventSlotChange extends Event {
     this.idSlot = idSlot
   }
 
-  container() { return this.playfield.container(this.idCnt) }
-  container_() { return this.playfield_.container(this.idCnt) }
-  slot():Slot|undefined {
-    if (this.container().hasSlot(this.idSlot, this.idCnt))
-      return this.container().slot(this.idSlot)
+  static container(self:EventSlotChange) { return self.playfield.container(self.idCnt) }
+  static container_(self:EventSlotChange) { return self.playfield_.container(self.idCnt) }
+  static slot(self:EventSlotChange):Slot|undefined {
+    if (EventSlotChange.container(self).hasSlot(self.idSlot, self.idCnt))
+      return EventSlotChange.container(self).slot(self.idSlot)
     else
       return undefined
   }
-  slot_() { return this.container_().slot(this.idSlot) }
+  static slot_(self:EventSlotChange) { return EventSlotChange.container_(self).slot(self.idSlot) }
 }
 
 class EventContainerChange extends Event {
@@ -828,8 +828,8 @@ class EventContainerChange extends Event {
     this.idCnt = idCnt
   }
 
-  container() { return this.playfield.container(this.idCnt) }
-  container_() { return this.playfield_.container(this.idCnt) }
+  static container(self:EventContainerChange) { return self.playfield.container(self.idCnt) }
+  static container_(self:EventContainerChange) { return self.playfield_.container(self.idCnt) }
 }
 
 class EventPingBack extends Event {
