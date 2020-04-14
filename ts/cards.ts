@@ -544,7 +544,6 @@ class UICard {
       this.element.classList.add('turned')
     }
     
-    svg.setAttribute('width', app.cardWidthGet().toString())
     svg.setAttribute('height', app.cardHeightGet().toString())
 
     this.element.appendChild(svg)
