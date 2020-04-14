@@ -423,10 +423,12 @@ class UISlotSpread extends UISlot {
   private containerEl:HTMLElement
   
   constructor(idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number,
-              minHeight:string=`${app.cardHeightGet()}px`, width?:string, classesSlot:string[]=['slot'],
-              classesCard:string[]=['card'], actionLongPress='flip', selectionMode='single') {
+              minHeight:string=`${app.cardHeightGet()}px`, width?:string, classesSlot?:string[],
+              classesCard?:string[], actionLongPress='flip', selectionMode='single') {
     
     super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress, selectionMode)
+    classesSlot = classesSlot || ['slot', 'slot-overlap']
+    classesCard = classesCard || ['card']
     this.classesCard = classesCard
     if (width)
       this.element.style.width = width
@@ -499,8 +501,8 @@ class UIContainerMulti extends UIContainer {
     for (const [slot, slot_] of updates) {
       if (!this.children.some(uislot => slot_.isId(uislot.idSlot))) {
         const uislot = new UISlotSpread(
-          cnt.id, this.app, this.owner, this.viewer, slot_.id, `${this.app.cardHeightGet()}px`, `${this.app.cardWidthGet()}px`,
-          ['slot', 'slot-overlap-vert'], ['card', 'card-overlap-vert'], this.actionLongPress
+          cnt.id, this.app, this.owner, this.viewer, slot_.id, '0px', `${this.app.cardWidthGet()}px`,
+          ['slot', 'slot-overlap-vert'], undefined, this.actionLongPress
         )
 
         uislot.init()
@@ -1175,16 +1177,15 @@ class GameGinRummy extends Game {
     assert(() => opponent)
     const root = app.root
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
-    uislotTop.init()
-    root.add(uislotTop)
+    const uislotOpp = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
+    uislotOpp.init()
+    root.add(uislotOpp)
 
     // Refactor as UI element...
     const divPlay = document.createElement("div")
     divPlay.style.display = 'flex'
     
-    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px', '100%',
-                                         ['slot', 'slot-overlap'], ['card', 'card-overlap'])
+    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px', '100%')
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
     divPlay.appendChild(uislotWaste.element)
@@ -1249,7 +1250,7 @@ class GameDummy extends Game {
     divPlay.appendChild(uislotMeldOpp.element)
     
     const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()+'px', '100%',
-                                         ['slot', 'slot-overlap'], ['card', 'card-overlap'], 'flip', 'all-proceeding')
+                                         undefined, undefined, 'flip', 'all-proceeding')
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
     divPlay.appendChild(uislotWaste.element)
