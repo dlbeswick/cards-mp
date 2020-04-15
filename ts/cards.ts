@@ -1,4 +1,5 @@
 type SlotUpdate = [Slot|undefined, Slot]
+type Vector = [number,number]
 
 function demandElementByIdTyped<T extends HTMLElement>(id:string, klass:new() => T):T {
   const result = document.getElementById(id)
@@ -34,6 +35,44 @@ function assert(test:() => any, message=test.toString(), ...args) {
 }
 
 window.onerror = errorHandler
+
+type RefEventListener = [string, (e:Event) => boolean]
+
+class EventListeners {
+  private refs:RefEventListener[] = []
+  private target:EventTarget
+
+  constructor(e:EventTarget) {
+    this.target = e
+  }
+  
+  add(typeEvent:string, handler:(e:Event) => boolean):RefEventListener {
+    const ref:RefEventListener = [typeEvent, EventListeners.preventDefaultWrapper.bind(undefined, handler)]
+    this.refs.push(ref)
+    this.target.addEventListener(typeEvent, ref[1])
+    return ref
+  }
+
+  removeAll() {
+    for (const ref of this.refs)
+      this.target.removeEventListener(...ref)
+    this.refs = []
+  }
+
+  remove(ref:RefEventListener) {
+    const idx = this.refs.indexOf(ref)
+    assert(() => idx != -1)
+    this.target.removeEventListener(...ref)
+    this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
+  }
+  
+  private static preventDefaultWrapper(func:(e:Event) => boolean, e:Event) {
+    if (!func(e)) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }
+}
 
 abstract class Identified<T, IdType=string> {
   readonly id:IdType
@@ -261,16 +300,30 @@ class Player {
   }
 }
 
-abstract class UIActionable {
-  readonly idCnt:string
+abstract class UIElement {
   readonly element:HTMLElement
+  protected readonly events:EventListeners
+
+  constructor(element:HTMLElement) {
+    this.element = element
+    this.events = new EventListeners(this.element)
+  }
+
+  destroy() {
+    this.events.removeAll()
+    this.element.remove()
+  }
+}
+
+abstract class UIActionable extends UIElement {
+  readonly idCnt:string
   protected readonly app:App
   protected readonly owner:Player|null
   protected readonly viewer:Player
   
   constructor(element:HTMLElement, idCnt:string, app:App, owner:Player|null, viewer:Player) {
+    super(element)
     this.idCnt = idCnt
-    this.element = element
     this.app = app
     this.owner = owner
     this.viewer = viewer
@@ -279,7 +332,7 @@ abstract class UIActionable {
   }
 
   init():void {
-    this.element.addEventListener("click", this.onClick.bind(this))
+    this.events.add("click", this.onClick.bind(this))
   }
 
   protected abstract onAction(selected:UICard[]):void
@@ -439,8 +492,9 @@ class UISlotSpread extends UISlot {
   }
 
   change(slot:Slot|undefined, slot_:Slot):void {
-    const container = this.containerEl.cloneNode(false) as HTMLElement
+//    const childrenOld = this.children.map(c => [c, c.coordsAbsolute()] as [UICard, Vector])
     this.children = []
+    const container = this.containerEl.cloneNode(false) as HTMLElement
     let zIndex = 0
     for (const wcard of slot_) {
       const uicard = new UICard(wcard, this, this.app, true, this.viewer, this.classesCard)
@@ -450,6 +504,7 @@ class UISlotSpread extends UISlot {
     }
     this.containerEl.replaceWith(container)
     this.containerEl = container
+//    childrenOld.forEach(([c,xy]) => c.animateTo(xy, [100, 100], c.destroy.bind(c)))
   }
 }
 
@@ -514,23 +569,23 @@ class UIContainerMulti extends UIContainer {
   }
 }
 
-class UICard {
+class UICard extends UIElement {
   readonly wcard:WorldCard
-  readonly element:HTMLElement
   readonly uislot:UISlot
   private readonly app:App
   private timerPress:number|null = null
   private touchYStart = 0
   private readonly dropTarget:boolean
+  private x?:number
+  private y?:number
   
   constructor(wcard:WorldCard, uislot:UISlot, app:App, dropTarget:boolean, viewer:Player,
               classesCard=["card"]) {
+    super(document.createElement("div"))
     this.dropTarget = dropTarget
     this.app = app
     this.wcard = wcard
     this.uislot = uislot
-    
-    this.element = document.createElement("div")
     this.element.classList.add(...classesCard)
 
     const svg = document.createElement("img")
@@ -604,6 +659,29 @@ class UICard {
       this.element.classList.remove("selected")
   }
 
+  coordsAbsolute():Vector {
+    const rectThis = this.element.getBoundingClientRect()
+    return [rectThis.left + window.pageXOffset, rectThis.top + window.pageYOffset]
+  }
+  
+  animateTo(start:Vector, end:Vector, onFinish:(e:Event) => void) {
+    this.element.style.position = 'absolute'
+    this.element.style.left = start[0]+'px'
+    this.element.style.top = start[1]+'px'
+    document.body.appendChild(this.element)
+    this.element.animate(
+      [
+        {
+          transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`
+        }
+      ],
+      {
+        duration: 10000,
+        easing: 'ease-out'
+      }
+    ).addEventListener("finish", onFinish)
+  }
+  
   private onLongPress() {
     if (this.uislot.actionLongPress == 'flip') {
       this.flip()
