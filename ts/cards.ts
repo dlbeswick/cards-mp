@@ -274,22 +274,6 @@ class Slot extends Identified<Slot, number> implements Iterable<WorldCard> {
   }
 }
 
-class UISlotRoot {
-  readonly element:HTMLElement
-  
-  constructor(element:HTMLElement) {
-    this.element = element
-  }
-  
-  add(child:UIActionable):void {
-    this.element.appendChild(child.element)
-  }
-
-  clear() {
-    this.element.innerHTML = ''
-  }
-}
-
 class Player {
   readonly name:string
   readonly idSlot:string
@@ -315,6 +299,61 @@ abstract class UIElement {
   }
 }
 
+/*
+  Elements that hold other containers or UIActionables.
+*/
+abstract class UIContainer extends UIElement {
+  private children:Array<UIActionable|UIContainer> = []
+
+  constructor(element:HTMLElement) {
+    super(element)
+  }
+  
+  add(child:UIActionable|UIContainer):void {
+    this.element.appendChild(child.element)
+    this.children.push(child)
+  }
+
+  clear() {
+    this.element.innerHTML = ''
+    this.children = []
+  }
+
+  // Note that it's possible for there to be no UICard present for a card, even if all cards are on the playfield as is
+  // typical.
+  //
+  // For example, the "single slot" view of stock may logically contain the card but a UICard will only have been
+  // created for the top card.
+  uicardForCard(card:Card):UICard|undefined {
+    for (const c of this.children) {
+      const result = c.uicardForCard(card)
+      if (result)
+        return result
+    }
+    
+    return undefined
+  }
+}
+
+class UIContainerFlex extends UIContainer {
+  constructor(direction='row', grow=false) {
+    super(document.createElement("div"))
+    this.element.style.display = 'flex'
+    if (grow)
+      this.element.style.flexGrow = "1"
+    this.element.style.flexDirection = direction
+  }
+}
+
+class UISlotRoot extends UIContainer {
+  constructor(element:HTMLElement) {
+    super(element)
+  }
+}
+
+/*
+  Elements that can be clicked, touched, can have cards moved to and from them, etc.
+*/
 abstract class UIActionable extends UIElement {
   readonly idCnt:string
   protected readonly app:App
@@ -327,14 +366,13 @@ abstract class UIActionable extends UIElement {
     this.app = app
     this.owner = owner
     this.viewer = viewer
-
-    this.element.classList.add("slot")
   }
 
   init():void {
     this.events.add("click", this.onClick.bind(this))
   }
 
+  abstract uicardForCard(card:Card):UICard|undefined
   protected abstract onAction(selected:UICard[]):void
 
   container(playfield:Playfield):ContainerSlot {
@@ -356,6 +394,9 @@ abstract class UIActionable extends UIElement {
   }
 }
 
+/*
+  Shows single card slots.
+*/
 abstract class UISlot extends UIActionable {
   idSlot:number
   readonly actionLongPress:string
@@ -366,6 +407,8 @@ abstract class UISlot extends UIActionable {
               actionLongPress='flip', selectionMode='single') {
 
     super(element, idCnt, app, owner, viewer)
+    
+    this.element.classList.add("slot")
     
     this.actionLongPress = actionLongPress
     this.selectionMode = selectionMode
@@ -437,6 +480,9 @@ abstract class UISlot extends UIActionable {
   }
 }
 
+/*
+  Shows the topmost card of a single slot and a card count.
+*/
 class UISlotSingle extends UISlot {
   readonly count:HTMLElement
   private readonly height:string
@@ -455,10 +501,20 @@ class UISlotSingle extends UISlot {
     this.element.appendChild(this.cards)
   }
 
+  uicardForCard(card:Card):UICard|undefined {
+    if (this.children[0]?.wcard.card.is(card))
+      return this.children[0]
+    else
+      return undefined
+  }
+  
   change(slot:Slot|undefined, slot_:Slot):void {
     const cards = this.makeCardsDiv(this.height)
-    if (!slot_.isEmpty())
-      cards.appendChild(new UICard(slot_.top(), this, this.app, false, this.viewer).element)
+    this.children = []
+    if (!slot_.isEmpty()) {
+      this.children[0] = new UICard(slot_.top(), this, this.app, false, this.viewer)
+      cards.appendChild(this.children[0].element)
+    }
     this.cards.replaceWith(cards)
     this.cards = cards
     this.count.innerText = slot_.length().toString()
@@ -471,6 +527,9 @@ class UISlotSingle extends UISlot {
   }
 }
 
+/*
+  Shows a single slot as a fan of cards.
+*/
 class UISlotSpread extends UISlot {
   private classesCard:string[]
   private containerEl:HTMLElement
@@ -491,6 +550,10 @@ class UISlotSpread extends UISlot {
     this.element.appendChild(this.containerEl)
   }
 
+  uicardForCard(card:Card):UICard|undefined {
+    return this.children.find(uicard => uicard.wcard.card.is(card))
+  }
+  
   change(slot:Slot|undefined, slot_:Slot):void {
 //    const childrenOld = this.children.map(c => [c, c.coordsAbsolute()] as [UICard, Vector])
     this.children = []
@@ -508,7 +571,10 @@ class UISlotSpread extends UISlot {
   }
 }
 
-abstract class UIContainer extends UIActionable {
+/*
+  UI elements that can visualise ContainerSlots.
+*/
+abstract class UIContainerSlots extends UIActionable {
   constructor(element:HTMLElement, idCnt:string, app:App, owner:Player|null, viewer:Player) {
     super(element, idCnt, app, owner, viewer)
     
@@ -524,18 +590,32 @@ abstract class UIContainer extends UIActionable {
   abstract change(cnt:ContainerSlot, cnt_:ContainerSlot, updates:SlotUpdate[]):void
 }
 
-class UIContainerMulti extends UIContainer {
+/*
+  A UI element that can visualise a whole ContainerSlot by displaying multiple UISlotSpreads within it, and allowing
+  new slots to be created.
+*/
+class UIContainerSlotsMulti extends UIContainerSlots {
   private children:UISlot[] = []
   private actionLongPress:string
   
   constructor(idSlot:string, app:App, owner:Player|null, viewer:Player, height:string=`${app.cardHeightGet()}px`,
               actionLongPress='flip') {
     super(document.createElement("div"), idSlot, app, owner, viewer)
-    
+
+    this.element.classList.add("slot")
     this.element.style.minHeight = height
     this.actionLongPress = actionLongPress
   }
 
+  uicardForCard(card:Card):UICard|undefined {
+    for (const child of this.children) {
+      const result = child.uicardForCard(card)
+      if (result)
+        return result
+    }
+    return undefined
+  }
+  
   onAction(selected:UICard[]) {
     assert(() => selected.length)
     const cardsSrc = selected.map(ui => ui.wcard)
@@ -1259,26 +1339,23 @@ class GameGinRummy extends Game {
     root.add(uislotOpp)
 
     // Refactor as UI element...
-    const divPlay = document.createElement("div")
-    divPlay.style.display = 'flex'
+    const divPlay = new UIContainerFlex()
     
     const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px', '100%')
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
-    divPlay.appendChild(uislotWaste.element)
+    divPlay.add(uislotWaste)
     
-    const divStock = document.createElement("div")
-    divStock.style.display = 'flex'
-    divStock.style.flexDirection = 'column'
-    const divStockSpacer = document.createElement("div")
+    const divStock = new UIContainerFlex('column', true)
+    const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
     divStockSpacer.style.flexGrow = "1"
-    divStock.appendChild(divStockSpacer)
+    divStock.element.appendChild(divStockSpacer)
     const uislotStock = new UISlotSingle('stock', app, null, viewer, '', undefined)
     uislotStock.init()
-    divStock.appendChild(uislotStock.element)
-    divPlay.appendChild(divStock)
+    divStock.add(uislotStock)
+    divPlay.add(divStock)
 
-    root.element.appendChild(divPlay)
+    root.add(divPlay)
     
     const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotBottom.init()
@@ -1317,33 +1394,30 @@ class GameDummy extends Game {
     root.add(uislotTop)
 
     // Refactor as UI element...
-    const divPlay = document.createElement("div")
-    divPlay.style.display = 'flex'
-    divPlay.style.flexDirection = 'column'
+    const divPlay = new UIContainerFlex('column')
     
-    const uislotMeldOpp = new UIContainerMulti(opponent.idSlot+'-meld', app, null, viewer, `${app.cardHeightGet()}px`, 'turn')
+    const uislotMeldOpp = new UIContainerSlotsMulti(opponent.idSlot+'-meld', app, null, viewer,
+                                                    `${app.cardHeightGet()}px`, 'turn')
     uislotMeldOpp.init()
-    uislotMeldOpp.element.style.flexGrow = "1"
-    divPlay.appendChild(uislotMeldOpp.element)
+    uislotMeldOpp.element.style.flexGrow = "1" // tbd: encode in UIElement
+    divPlay.add(uislotMeldOpp)
     
     const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()+'px', '100%',
                                          undefined, undefined, 'flip', 'all-proceeding')
     uislotWaste.init()
-    uislotWaste.element.style.flexGrow = "1"
-    divPlay.appendChild(uislotWaste.element)
+    uislotWaste.element.style.flexGrow = "1" // tbd: encode in UIElement
+    divPlay.add(uislotWaste)
     
-    const uislotMeldPlay = new UIContainerMulti(viewer.idSlot+'-meld', app, null, viewer, `${app.cardHeightGet()}px`,
-                                                'turn')
+    const uislotMeldPlay = new UIContainerSlotsMulti(viewer.idSlot+'-meld', app, null, viewer,
+                                                     `${app.cardHeightGet()}px`, 'turn')
     uislotMeldPlay.init()
-    uislotMeldPlay.element.style.flexGrow = "1"
-    divPlay.appendChild(uislotMeldPlay.element)
+    uislotMeldPlay.element.style.flexGrow = "1"  // tbd: encode in UIElement
+    divPlay.add(uislotMeldPlay)
     
-    root.element.appendChild(divPlay)
+    root.add(divPlay)
     
-    const divCombiner = document.createElement("div")
-    divCombiner.style.display = 'flex'
-    divCombiner.style.flexGrow = "1"
-    divPlay.appendChild(divCombiner)
+    const divCombiner = new UIContainerFlex('row', true)
+    divPlay.add(divCombiner)
     
     const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${app.cardHeightGet()}px`,
                                           '100%')
@@ -1352,7 +1426,7 @@ class GameDummy extends Game {
 
     const uislotStock = new UISlotSingle('stock', app, null, viewer, '', undefined)
     uislotStock.init()
-    uislotStock.element.style.marginTop = 'auto'
+    uislotStock.element.style.marginTop = 'auto' // tbd: encode in UIElement
     root.add(uislotStock)
   }
 }
