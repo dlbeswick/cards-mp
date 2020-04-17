@@ -1333,7 +1333,7 @@ class App {
     if (ctx) {
       const osc = ctx.createOscillator()
       osc.type = 'triangle'
-      osc.frequency.value = 100 + Math.random() * 400
+      osc.frequency.value = 200 + Math.random() * 300
       osc.frequency.setTargetAtTime(osc.frequency.value + osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
       const gain = ctx.createGain()
       gain.gain.value = 0.25
