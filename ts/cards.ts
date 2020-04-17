@@ -576,8 +576,8 @@ class UISlotSpread extends UISlot {
       const child = this.children[idx]
       if (!child || !child.wcard.equals(wcard)) {
         const uicard = new UICard(wcard, this, this.app, true, this.viewer, this.classesCard)
-        uicard.element.style.zIndex = (idx+1).toString() // Must be +1 for transitions, so their order doesn't drop
-                                                         // below 0
+        uicard.element.style.zIndex = (idx+1).toString() // Keep it +1 just in case transitions ever need to avoid
+                                                         // overlaying the same card (then they can -1).
         this.children[idx] = uicard
         if (child)
           child.element.replaceWith(uicard.element)
@@ -673,6 +673,7 @@ class UICard extends UIElement {
   private timerPress:number|null = null
   private readonly dropTarget:boolean
   private readonly eventsImg:EventListeners
+  private touch?:Touch
   
   constructor(wcard:WorldCard, uislot:UISlot, app:App, dropTarget:boolean, viewer:Player,
               classesCard=["card"]) {
@@ -714,12 +715,14 @@ class UICard extends UIElement {
       self.timerPress = window.setTimeout(
         () => {
           self.timerPress = null
+          self.touch = undefined
           self.onLongPress()
         }, 500)
       return false
     }
-
+    
     function cancel(self, e) {
+      self.touch = undefined
       if (self.timerPress) {
         clearTimeout(self.timerPress)
         self.timerPress = null
@@ -727,12 +730,20 @@ class UICard extends UIElement {
       return false
     }
 
-    this.eventsImg.add("mouseup", (e) => lpMouseUp(this, e))
-    this.eventsImg.add("mousedown", (e) => lpMouseDown(this, e))
+    // Touch events here must both allow longpress and not block scrolling. "touchstart" return true, so further
+    // mouse events can't be blocked by the browser and this code must ignore them where required.
+    this.eventsImg.add("mouseup", (e) => !this.touch ? lpMouseUp(this, e) : true)
+    this.eventsImg.add("mousedown", (e) => !this.touch ? lpMouseDown(this, e) : true)
     this.eventsImg.add("mouseout", (e) => cancel(this, e))
+    this.eventsImg.add("touchstart",
+                       (e:TouchEvent) => { this.touch = e.touches[0]; lpMouseDown(this, e); return true })
+    this.eventsImg.add("touchmove", (e:TouchEvent) => {
+      if (!this.touch || Math.abs(e.touches[0].screenY - this.touch.screenY) > 5)
+        cancel(this, e)
+      return true
+    })
     this.eventsImg.add("touchcancel", (e) => cancel(this, e))
-    this.eventsImg.add("touchend", (e) => lpMouseUp(this, e))
-    this.eventsImg.add("touchstart", (e) => lpMouseDown(this, e))
+    this.eventsImg.add("touchend", (e) => this.touch ? lpMouseUp(this, e) : false)
 
     // Stop slots acting on mouse events that this element has acted on.
     this.eventsImg.add("click", (e) => (!(this.dropTarget || !this.app.selected || this.app.selected.includes(this))))
@@ -1295,17 +1306,22 @@ class App {
         if (uicard_ != uicard) {
           const end = uicard_.coordsAbsolute()
           const [fade0,fade1] = ['100%', '100%']
-          uicard.animateTo(start, end, Number(uicard_.element.style.zIndex) - 1, 1000,
-                           () => {
-                             uicard_.element.style.visibility = 'visible'
-                             if (uicard.equals(uicard_)) {
-                               uicard.destroy()
-                             } else {
-                               uicard_.fadeTo('0%', '100%', 250)
-                               uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
-                             }
-                           })
-          uicard_.element.style.visibility = 'hidden'
+          if (end[0] == start[0] && end[1] == start[1]) {
+            uicard_.fadeTo('0%', '100%', 250)
+            uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
+          } else {
+            uicard.animateTo(start, end, Number(uicard_.element.style.zIndex), 1000,
+                             () => {
+                               uicard_.element.style.visibility = 'visible'
+                               if (uicard.equals(uicard_)) {
+                                 uicard.destroy()
+                               } else {
+                                 uicard_.fadeTo('0%', '100%', 250)
+                                 uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
+                               }
+                             })
+            uicard_.element.style.visibility = 'hidden'
+          }
         }
       } else {
         uicard.animateTo(start, [start[0], -200], Number(uicard.element.style.zIndex), 1000,
