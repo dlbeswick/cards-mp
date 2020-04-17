@@ -1232,19 +1232,6 @@ class App {
   }
 
   postSlotChange(uicards:[UICard, Vector][]) {
-    const audioCtx = new ((<any>window).AudioContext || (<any>window).webkitAudioContext)()
-    const osc = audioCtx.createOscillator()
-    osc.type = 'triangle'
-    osc.frequency.value = 100 + Math.random() * 400
-    osc.frequency.setTargetAtTime(osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
-    const gain = audioCtx.createGain()
-    gain.gain.value = 0.25
-    gain.gain.setTargetAtTime(0.0, audioCtx.currentTime + 0.5, 0.1)
-    osc.connect(gain)
-    gain.connect(audioCtx.destination)
-    osc.start()
-    window.setTimeout(() => gain.disconnect(), 1500)
-
     const uicards_ = this.root.uicardsForCards(uicards.map(u => u[0].wcard.card))
     for (const [uicard, coords] of uicards) {
       const uicard_ = uicards_.find(u_ => u_.wcard.card.is(uicard.wcard.card))
@@ -1258,6 +1245,19 @@ class App {
         uicard.animateTo(coords, [coords[0], 0], Number(uicard.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
       }
     }
+    
+    const audioCtx = new ((<any>window).AudioContext || (<any>window).webkitAudioContext)()
+    const osc = audioCtx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.value = 100 + Math.random() * 400
+    osc.frequency.setTargetAtTime(osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
+    const gain = audioCtx.createGain()
+    gain.gain.value = 0.25
+    gain.gain.setTargetAtTime(0.0, audioCtx.currentTime + 0.5, 0.1)
+    osc.connect(gain)
+    gain.connect(audioCtx.destination)
+    osc.start()
+    window.setTimeout(() => gain.disconnect(), 1500)
   }
 }
 
