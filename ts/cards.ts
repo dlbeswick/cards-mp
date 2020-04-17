@@ -771,7 +771,7 @@ class UICard extends UIElement {
     document.body.appendChild(this.element)
     this.element.animate(
       [
-        { transform: 'translate(0px, 0px)', zIndex: this.element.style.zIndex },
+        { transform: 'translate(0px, 0px)', zIndex: this.element.style.zIndex || '0' },
         { transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`, zIndex: zIndexEnd.toString() }
       ],
       {
@@ -1237,7 +1237,7 @@ class App {
       const uicard_ = uicards_.find(u_ => u_.wcard.card.is(uicard.wcard.card))
       if (uicard_) {
         const end = uicard_.coordsAbsolute()
-        if (coords[0] != end[0] || coords[1] == end[1]) {
+        if (coords[0] != end[0] || coords[1] != end[1]) {
           uicard.animateTo(coords, end, Number(uicard_.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
           uicard_.fadeTo('0%', '100%', 1000)
         }
