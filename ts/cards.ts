@@ -762,6 +762,7 @@ class UICard extends UIElement {
   }
   
   animateTo(start:Vector, end:Vector, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
+    this.events.removeAll()
     this.element.style.position = 'absolute'
     this.element.style.left = start[0]+'px'
     this.element.style.top = start[1]+'px'
