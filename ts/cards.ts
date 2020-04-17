@@ -385,13 +385,12 @@ abstract class UIActionable extends UIElement {
   }
   
   onClick(e:MouseEvent) {
-    e.preventDefault()
-    e.stopPropagation()
     if (this.app.selected) {
       this.onAction(this.app.selected)
       this.app.selected.forEach(s => s.select(false))
       this.app.selected = null
     }
+    return true
   }
 }
 
@@ -577,7 +576,8 @@ class UISlotSpread extends UISlot {
       const child = this.children[idx]
       if (!child || !child.wcard.equals(wcard)) {
         const uicard = new UICard(wcard, this, this.app, true, this.viewer, this.classesCard)
-        uicard.element.style.zIndex = idx.toString()
+        uicard.element.style.zIndex = (idx+1).toString() // Must be +1 for transitions, so their order doesn't drop
+                                                         // below 0
         this.children[idx] = uicard
         if (child)
           child.element.replaceWith(uicard.element)
@@ -668,12 +668,11 @@ class UIContainerSlotsMulti extends UIContainerSlots {
 class UICard extends UIElement {
   readonly wcard:WorldCard
   readonly uislot:UISlot
+  private readonly faceUp:boolean
   private readonly app:App
   private timerPress:number|null = null
-  private touchYStart = 0
   private readonly dropTarget:boolean
-  private x?:number
-  private y?:number
+  private readonly eventsImg:EventListeners
   
   constructor(wcard:WorldCard, uislot:UISlot, app:App, dropTarget:boolean, viewer:Player,
               classesCard=["card"]) {
@@ -683,9 +682,10 @@ class UICard extends UIElement {
     this.wcard = wcard
     this.uislot = uislot
     this.element.classList.add(...classesCard)
+    this.faceUp = wcard.faceUp && (this.uislot.isViewableBy(viewer) || wcard.faceUpIsConscious)
 
     const svg = document.createElement("img")
-    if (wcard.faceUp && (this.uislot.isViewableBy(viewer) || wcard.faceUpIsConscious)) {
+    if (this.faceUp) {
       svg.setAttribute('src', app.urlCardImages + '#c' + wcard.card.suit + '_' + wcard.card.rank)
     } else {
       svg.setAttribute('src', app.urlCardBack)
@@ -697,48 +697,59 @@ class UICard extends UIElement {
     
     svg.setAttribute('height', app.cardHeightGet().toString())
 
+    // Adding events to a small-width div works fine on Chrome and FF, but iOS ignores clicks on the image if it
+    // extends past the div borders. Or perhaps it's firing pointerups?
+    this.eventsImg = new EventListeners(svg)
     this.element.appendChild(svg)
     
     function lpMouseUp(self, e) {
       if (self.timerPress) {
-        clearTimeout(self.timerPress)
-        self.timerPress = null
+        cancel(self, e)
         self.onClick()
       }
+      return false
     }
     
     function lpMouseDown(self, e) {
-      self.touchYStart = e.clientY
       self.timerPress = window.setTimeout(
         () => {
           self.timerPress = null
           self.onLongPress()
         }, 500)
+      return false
     }
-    
-    this.element.addEventListener("pointerup", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseUp(this, e)})
-    this.element.addEventListener("pointerdown", (e) => {e.preventDefault(); e.stopPropagation(); lpMouseDown(this, e)})
-    this.element.addEventListener("pointermove", (e) => {
-      if (Math.abs(e.clientY - this.touchYStart) > 5) {
-        if (this.timerPress) {
-          clearTimeout(this.timerPress)
-          this.timerPress = null
-        }
+
+    function cancel(self, e) {
+      if (self.timerPress) {
+        clearTimeout(self.timerPress)
+        self.timerPress = null
       }
-    })
+      return false
+    }
+
+    this.eventsImg.add("mouseup", (e) => lpMouseUp(this, e))
+    this.eventsImg.add("mousedown", (e) => lpMouseDown(this, e))
+    this.eventsImg.add("mouseout", (e) => cancel(this, e))
+    this.eventsImg.add("touchcancel", (e) => cancel(this, e))
+    this.eventsImg.add("touchend", (e) => lpMouseUp(this, e))
+    this.eventsImg.add("touchstart", (e) => lpMouseDown(this, e))
 
     // Stop slots acting on mouse events that this element has acted on.
-    this.element.addEventListener("click", (e) => {
-      if (this.dropTarget || !this.app.selected || this.app.selected.includes(this)) {
-        e.preventDefault()
-        e.stopPropagation()
-      }
-    })
+    this.eventsImg.add("click", (e) => (!(this.dropTarget || !this.app.selected || this.app.selected.includes(this))))
 
     // Stop press-on-image context menu on mobile browsers.
-    this.element.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); })
+    this.eventsImg.add("contextmenu", (e) => false)
   }
 
+  equals(rhs:UICard) {
+    return this.wcard.equals(rhs.wcard) && this.faceUp == rhs.faceUp
+  }
+  
+  destroy() {
+    super.destroy()
+    this.eventsImg.removeAll()
+  }
+  
   detach() {
     this.element.parentNode?.removeChild(this.element)
   }
@@ -761,37 +772,54 @@ class UICard extends UIElement {
   }
   
   fadeTo(start:string, end:string, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
-    const filter = this.element.style.filter
-    
-    this.element.style.opacity = end
-    this.element.animate(
-      [
-        { filter: ` opacity(${start})` },
-        { filter: ` opacity(${end})` }
-      ],
-      {
-        duration: msDuration,
-        easing: 'ease-in-out'
-      }
-    ).addEventListener("finish", onFinish)
+    if (this.element.animate) {
+      const filter = this.element.style.filter
+      
+      const anim = this.element.animate(
+        [
+          { filter: ` opacity(${start})` },
+          { filter: ` opacity(${end})` }
+        ],
+        {
+          duration: msDuration,
+          easing: 'ease-in-out'
+        }
+      )
+      anim.addEventListener("finish", onFinish)
+    } else {
+      onFinish(undefined)
+    }
   }
   
-  animateTo(start:Vector, end:Vector, zIndexEnd: number, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
-    this.events.removeAll()
-    this.element.style.position = 'absolute'
-    this.element.style.left = start[0]+'px'
-    this.element.style.top = start[1]+'px'
-    document.body.appendChild(this.element)
-    this.element.animate(
-      [
-        { transform: 'translate(0px, 0px)', zIndex: this.element.style.zIndex || '0' },
-        { transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`, zIndex: zIndexEnd.toString() }
-      ],
-      {
-        duration: msDuration,
-        easing: 'ease-in-out'
-      }
-    ).addEventListener("finish", onFinish)
+  animateTo(start:Vector, end:Vector, zIndexEnd: number, msDuration:number,
+            onFinish:(e?:Event) => void = (e) => {}) {
+    
+    if (this.element.animate) {
+      this.events.removeAll()
+      this.eventsImg.removeAll()
+      this.element.style.position = 'absolute'
+      this.element.style.left = start[0]+'px'
+      this.element.style.top = start[1]+'px'
+      document.body.appendChild(this.element)
+      const kfEnd = { transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`,
+                      zIndex: zIndexEnd.toString() }
+      this.element.animate(
+        [
+          { transform: 'translate(0px, 0px)', zIndex: this.element.style.zIndex || '0' },
+          kfEnd
+        ],
+        {
+          duration: msDuration,
+          easing: 'ease-in-out'
+        }
+      ).addEventListener("finish", (e) => {
+        this.element.style.transform = kfEnd.transform
+        this.element.style.zIndex = kfEnd.zIndex
+        onFinish(e)
+      })
+    } else {
+      onFinish(undefined)
+    }
   }
   
   private onLongPress() {
@@ -1157,6 +1185,7 @@ class App {
   private players:Player[]
   private games:Game[]
   private game:Game
+  private audioCtx?:AudioContext
   
   constructor(games:Game[], notifierSlot:NotifierSlot, urlCardImages:string, urlCardBack:string, viewer:Player,
               players:Player[], root:UISlotRoot) {
@@ -1171,6 +1200,13 @@ class App {
     this.root = root
   }
 
+  audioCtxGet():AudioContext|undefined {
+    const ctx = (<any>window).AudioContext || (<any>window).webkitAudioContext
+    if (ctx)
+      this.audioCtx = this.audioCtx || new ctx()
+    return this.audioCtx
+  }
+  
   run(gameId:string) {
     this.newGame(gameId)
   }
@@ -1253,34 +1289,45 @@ class App {
 
   postSlotChange(uicards:[UICard, Vector][]) {
     const uicards_ = this.root.uicardsForCards(uicards.map(u => u[0].wcard.card))
-    for (const [uicard, coords] of uicards) {
+    for (const [uicard, start] of uicards) {
       const uicard_ = uicards_.find(u_ => u_.wcard.card.is(uicard.wcard.card))
       if (uicard_) {
         if (uicard_ != uicard) {
           const end = uicard_.coordsAbsolute()
-          if (coords[0] != end[0] || coords[1] != end[1]) {
-            uicard.animateTo(coords, end, Number(uicard_.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
-            uicard_.fadeTo('0%', '100%', 1000)
-          }
+          const [fade0,fade1] = ['100%', '100%']
+          uicard.animateTo(start, end, Number(uicard_.element.style.zIndex) - 1, 1000,
+                           () => {
+                             uicard_.element.style.visibility = 'visible'
+                             if (uicard.equals(uicard_)) {
+                               uicard.destroy()
+                             } else {
+                               uicard_.fadeTo('0%', '100%', 250)
+                               uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
+                             }
+                           })
+          uicard_.element.style.visibility = 'hidden'
         }
       } else {
-        uicard.animateTo(coords, [coords[0], 0], Number(uicard.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
+        uicard.animateTo(start, [start[0], -200], Number(uicard.element.style.zIndex), 1000,
+                         uicard.destroy.bind(uicard))
       }
     }
-    
-    const audioCtx = new ((<any>window).AudioContext || (<any>window).webkitAudioContext)()
-    const osc = audioCtx.createOscillator()
-    osc.type = 'triangle'
-    osc.frequency.value = 100 + Math.random() * 400
-    osc.frequency.setTargetAtTime(osc.frequency.value + osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
-    const gain = audioCtx.createGain()
-    gain.gain.value = 0.25
-    gain.gain.setTargetAtTime(0.0, audioCtx.currentTime + 0.5, 0.1)
-    osc.connect(gain)
-    gain.connect(audioCtx.destination)
-    osc.start()
-    osc.stop(audioCtx.currentTime + 1.0)
-    window.setTimeout(() => gain.disconnect(), 1500)
+
+    const ctx = this.audioCtxGet()
+    if (ctx) {
+      const osc = ctx.createOscillator()
+      osc.type = 'triangle'
+      osc.frequency.value = 100 + Math.random() * 400
+      osc.frequency.setTargetAtTime(osc.frequency.value + osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
+      const gain = ctx.createGain()
+      gain.gain.value = 0.25
+      gain.gain.setTargetAtTime(0.0, ctx.currentTime + 0.5, 0.1)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(0)
+      osc.stop(ctx.currentTime + 1.0)
+      window.setTimeout(() => gain.disconnect(), 1500)
+    }
   }
 }
 
@@ -1354,7 +1401,7 @@ function connect(app:App) {
     }
     
     console.log("Attempting connection to " + idPeer)
-    const conn = app.peer.connect("mpcard-"+idPeer)
+    const conn = app.peer.connect("mpcard-" + idPeer, {reliable: true})
     conn.on('open', function() {
       console.debug("Peer opened")
       demandElementById("connect-status").innerHTML = "Waiting for reply"
@@ -1528,7 +1575,7 @@ function run(urlCardImages:string, urlCardBack:string) {
     [p0, p1],
     new UISlotRoot()
   )
-
+  
   appGlobal = app
 
   demandElementById("error").addEventListener(

@@ -71,6 +71,10 @@ div.card.selected {
 	padding-bottom: 0;
 						
 	label {
+		-webkit-touch-callout: none;
+		-webkit-user-select: none;
+		user-select: none;
+
 		display: block;
 		font-family: "sans-serif";
 		background: #dddddd;
