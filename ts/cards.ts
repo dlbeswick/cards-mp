@@ -1,4 +1,4 @@
-type SlotUpdate = [Slot|undefined, Slot]
+type UpdateSlot = [Slot|undefined, Slot]
 type Vector = [number,number]
 
 function demandElementByIdTyped<T extends HTMLElement>(id:string, klass:new() => T):T {
@@ -162,11 +162,11 @@ class ContainerSlot extends Identified<ContainerSlot> implements Iterable<Slot> 
     return this.slots.reduce((a, s) => a + s.length(), 0)
   }
   
-  map(f: (c: WorldCard) => WorldCard):SlotUpdate[] {
+  map(f: (c: WorldCard) => WorldCard):UpdateSlot[] {
     return this.slots.map(s => [s, s.map(f)])
   }
 
-  update(update:SlotUpdate):ContainerSlot {
+  update(update:UpdateSlot):ContainerSlot {
     const [slot, slot_] = update
 
     if (this.isId(slot_.idCnt)) {
@@ -184,6 +184,10 @@ class ContainerSlot extends Identified<ContainerSlot> implements Iterable<Slot> 
   
   [Symbol.iterator]():Iterator<Slot> {
     return this.slots[Symbol.iterator]()
+  }
+
+  cardsAllSlots():Card[] {
+    return this.slots.flatMap(s => Array.from(s).map(wc => wc.card))
   }
 }
 
@@ -314,24 +318,20 @@ abstract class UIContainer extends UIElement {
     this.children.push(child)
   }
 
-  clear() {
-    this.element.innerHTML = ''
-    this.children = []
-  }
-
   // Note that it's possible for there to be no UICard present for a card, even if all cards are on the playfield as is
   // typical.
   //
   // For example, the "single slot" view of stock may logically contain the card but a UICard will only have been
   // created for the top card.
-  uicardForCard(card:Card):UICard|undefined {
-    for (const c of this.children) {
-      const result = c.uicardForCard(card)
-      if (result)
-        return result
-    }
-    
-    return undefined
+  uicardsForCards(cards:Card[]):UICard[] {
+    return this.children.flatMap(c => c.uicardsForCards(cards))
+  }
+
+  destroy() {
+    super.destroy()
+    for (const child of this.children)
+      child.destroy()
+    this.children = []
   }
 }
 
@@ -346,8 +346,9 @@ class UIContainerFlex extends UIContainer {
 }
 
 class UISlotRoot extends UIContainer {
-  constructor(element:HTMLElement) {
-    super(element)
+  constructor() {
+    super(document.createElement("div"))
+    demandElementById("playfield").appendChild(this.element)
   }
 }
 
@@ -372,7 +373,7 @@ abstract class UIActionable extends UIElement {
     this.events.add("click", this.onClick.bind(this))
   }
 
-  abstract uicardForCard(card:Card):UICard|undefined
+  abstract uicardsForCards(cards:Card[]):UICard[]
   protected abstract onAction(selected:UICard[]):void
 
   container(playfield:Playfield):ContainerSlot {
@@ -428,6 +429,12 @@ abstract class UISlot extends UIActionable {
   }
 
   abstract change(slot:Slot|undefined, slot_:Slot):void
+  
+  destroy() {
+    super.destroy()
+    for (const child of this.children)
+      child.destroy()
+  }
   
   onCardClicked(uicard:UICard) {
     if (this.selectionMode == 'all-proceeding') {
@@ -501,11 +508,11 @@ class UISlotSingle extends UISlot {
     this.element.appendChild(this.cards)
   }
 
-  uicardForCard(card:Card):UICard|undefined {
-    if (this.children[0]?.wcard.card.is(card))
-      return this.children[0]
+  uicardsForCards(cards:Card[]):UICard[] {
+    if (cards.some(c => this.children[0]?.wcard.card.is(c)))
+      return [this.children[0]]
     else
-      return undefined
+      return []
   }
   
   change(slot:Slot|undefined, slot_:Slot):void {
@@ -550,12 +557,11 @@ class UISlotSpread extends UISlot {
     this.element.appendChild(this.containerEl)
   }
 
-  uicardForCard(card:Card):UICard|undefined {
-    return this.children.find(uicard => uicard.wcard.card.is(card))
+  uicardsForCards(cards:Card[]):UICard[] {
+    return this.children.filter(uicard => cards.some(card => uicard.wcard.card.is(card)))
   }
   
   change(slot:Slot|undefined, slot_:Slot):void {
-//    const childrenOld = this.children.map(c => [c, c.coordsAbsolute()] as [UICard, Vector])
     this.children = []
     const container = this.containerEl.cloneNode(false) as HTMLElement
     let zIndex = 0
@@ -567,7 +573,6 @@ class UISlotSpread extends UISlot {
     }
     this.containerEl.replaceWith(container)
     this.containerEl = container
-//    childrenOld.forEach(([c,xy]) => c.animateTo(xy, [100, 100], c.destroy.bind(c)))
   }
 }
 
@@ -587,7 +592,7 @@ abstract class UIContainerSlots extends UIActionable {
     )
   }
 
-  abstract change(cnt:ContainerSlot, cnt_:ContainerSlot, updates:SlotUpdate[]):void
+  abstract change(cnt:ContainerSlot, cnt_:ContainerSlot, updates:UpdateSlot[]):void
 }
 
 /*
@@ -607,13 +612,8 @@ class UIContainerSlotsMulti extends UIContainerSlots {
     this.actionLongPress = actionLongPress
   }
 
-  uicardForCard(card:Card):UICard|undefined {
-    for (const child of this.children) {
-      const result = child.uicardForCard(card)
-      if (result)
-        return result
-    }
-    return undefined
+  uicardsForCards(cards:Card[]):UICard[] {
+    return this.children.flatMap(c => c.uicardsForCards(cards))
   }
   
   onAction(selected:UICard[]) {
@@ -629,7 +629,7 @@ class UIContainerSlotsMulti extends UIContainerSlots {
     )
   }
   
-  change(cnt:ContainerSlot, cnt_:ContainerSlot, updates:SlotUpdate[]):void {
+  change(cnt:ContainerSlot, cnt_:ContainerSlot, updates:UpdateSlot[]):void {
     // Deletes not handled for now
     assert(() => Array.from(cnt).every(c => Array.from(cnt_).some(c_ => c.is(c_))))
 
@@ -649,6 +649,9 @@ class UIContainerSlotsMulti extends UIContainerSlots {
   }
 }
 
+/*
+  Assumptions: 1->1 UICard->Card on active Playfield
+*/
 class UICard extends UIElement {
   readonly wcard:WorldCard
   readonly uislot:UISlot
@@ -744,7 +747,21 @@ class UICard extends UIElement {
     return [rectThis.left + window.pageXOffset, rectThis.top + window.pageYOffset]
   }
   
-  animateTo(start:Vector, end:Vector, onFinish:(e:Event) => void) {
+  fadeTo(start:string, end:string, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
+    this.element.style.opacity = end
+    this.element.animate(
+      [
+        { opacity: start },
+        { opacity: end }
+      ],
+      {
+        duration: msDuration,
+        easing: 'ease-in-out'
+      }
+    ).addEventListener("finish", onFinish)
+  }
+  
+  animateTo(start:Vector, end:Vector, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
     this.element.style.position = 'absolute'
     this.element.style.left = start[0]+'px'
     this.element.style.top = start[1]+'px'
@@ -756,8 +773,8 @@ class UICard extends UIElement {
         }
       ],
       {
-        duration: 10000,
-        easing: 'ease-out'
+        duration: msDuration,
+        easing: 'ease-in-out'
       }
     ).addEventListener("finish", onFinish)
   }
@@ -974,10 +991,10 @@ class EventSlotChange extends Event {
 class EventContainerChange extends Event {
   readonly playfield:Playfield
   readonly playfield_:Playfield
-  readonly updates:SlotUpdate[]
+  readonly updates:UpdateSlot[]
   readonly idCnt:string
   
-  constructor(playfield:Playfield, playfield_:Playfield, idCnt:string, updates:SlotUpdate[]) {
+  constructor(playfield:Playfield, playfield_:Playfield, idCnt:string, updates:UpdateSlot[]) {
     super('containerchange')
     this.playfield = playfield
     this.playfield_ = playfield_
@@ -1060,7 +1077,7 @@ class Playfield {
     throw new Error(`No such card ${id}`)
   }
   
-  slotsUpdate(updates:SlotUpdate[], app:App, send=true):Playfield {
+  slotsUpdate(updates:UpdateSlot[], app:App, send=true):Playfield {
     assert(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     if (send) {
@@ -1073,14 +1090,16 @@ class Playfield {
     }
     const playfield_ = new Playfield(containers_)
 
-    const cntChanged:Map<string, SlotUpdate[]> = new Map()
+    const preSlotChangeInfo = app.preSlotChange(updates)
+    
+    const cntChanged:Map<string, UpdateSlot[]> = new Map()
     for (const update of updates) {
       const [slot, slot_] = update
       
       if (!cntChanged.has(slot_.idCnt)) {
         cntChanged.set(slot_.idCnt, [])
       }
-      (cntChanged.get(slot_.idCnt) as SlotUpdate[]).push(update)
+      (cntChanged.get(slot_.idCnt) as UpdateSlot[]).push(update)
 
       app.notifierSlot.slot(slot_.idCnt, slot_.id).dispatchEvent(
         new EventSlotChange(app.playfieldGet(), playfield_, slot_.idCnt, slot_.id)
@@ -1092,6 +1111,8 @@ class Playfield {
         new EventContainerChange(app.playfieldGet(), playfield_, idCnt, updates)
       )
     }
+    
+    app.postSlotChange(preSlotChangeInfo)
     
     return playfield_
   }
@@ -1106,7 +1127,7 @@ class App {
   readonly notifierSlot:NotifierSlot
   readonly urlCardImages:string
   readonly urlCardBack:string
-  readonly root:UISlotRoot
+  private root:UISlotRoot
   private cardWidth = 74
   private cardHeight = 112
   private viewer:Player
@@ -1174,8 +1195,9 @@ class App {
     assert(() => this.game)
     this.viewer = viewer
 
-    this.root.clear()
-    this.game.makeUI(this)
+    this.root.destroy()
+    this.root = new UISlotRoot()
+    this.game.makeUI(this, this.root)
     demandElementById("player").innerText = this.viewer.name
 
     for (const cnt of this.playfield.containers) {
@@ -1200,6 +1222,28 @@ class App {
 
   gameGet() {
     return this.game
+  }
+
+  preSlotChange(updates:UpdateSlot[]):[UICard, Vector][] {
+    return this.root.uicardsForCards(updates.flatMap(([s, s_]) => s ? Array.from(s).map(wc => wc.card) : [])).
+      map(uicard => [uicard, uicard.coordsAbsolute()])
+  }
+
+  postSlotChange(uicards:[UICard, Vector][]) {
+    const uicards_ = this.root.uicardsForCards(uicards.map(u => u[0].wcard.card))
+    for (const [uicard, coords] of uicards) {
+      const uicard_ = uicards_.find(u_ => u_.wcard.card.is(uicard.wcard.card))
+      if (uicard_) {
+        const end = uicard_.coordsAbsolute()
+        if (coords[0] != end[0] || coords[1] == end[1]) {
+          uicard.animateTo(coords, end, 1000, uicard.destroy.bind(uicard))
+          uicard.element.style.zIndex = uicard_.element.style.zIndex
+          uicard_.fadeTo('0%', '100%', 1000)
+        }
+      } else {
+        uicard.animateTo(coords, [coords[0], 0], 1000, uicard.destroy.bind(uicard))
+      }
+    }
   }
 }
 
@@ -1239,7 +1283,7 @@ function host(app:App) {
         } else if (data.sync) {
           app.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
         } else if (data.slotUpdates) {
-          let updates:SlotUpdate[]
+          let updates:UpdateSlot[]
           let slots:Slot[]
           
           updates = data.slotUpdates.map(
@@ -1298,7 +1342,7 @@ function sync(app:App) {
 }
 
 function revealAll(app:App) {
-  const updates:SlotUpdate[] = app.playfieldGet().containers.flatMap(
+  const updates:UpdateSlot[] = app.playfieldGet().containers.flatMap(
     cnt => cnt.map(wc => wc.withFaceStateConscious(true, true))
   )
   
@@ -1307,7 +1351,7 @@ function revealAll(app:App) {
 
 abstract class Game extends Identified<Game> {
   abstract playfield():Playfield
-  abstract makeUI(app:App)
+  abstract makeUI(app:App, root:UISlotRoot)
 }
 
 class GameGinRummy extends Game {
@@ -1328,11 +1372,10 @@ class GameGinRummy extends Game {
     )
   }
   
-  makeUI(app:App) {
+  makeUI(app:App, root:UISlotRoot) {
     const viewer = app.viewerGet()
     const opponent = app.playersGet().find(p => p != viewer) as Player
     assert(() => opponent)
-    const root = app.root
     
     const uislotOpp = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotOpp.init()
@@ -1383,11 +1426,10 @@ class GameDummy extends Game {
     )
   }
   
-  makeUI(app:App) {
+  makeUI(app:App, root:UISlotRoot) {
     const viewer = app.viewerGet()
     const opponent = app.playersGet().find(p => p != viewer) as Player
     assert(() => opponent)
-    const root = app.root
     
     const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotTop.init()
@@ -1447,7 +1489,7 @@ function run(urlCardImages:string, urlCardBack:string) {
     urlCardBack,
     p0,
     [p0, p1],
-    new UISlotRoot(demandElementById("playfield"))
+    new UISlotRoot()
   )
 
   appGlobal = app
