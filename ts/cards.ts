@@ -562,17 +562,30 @@ class UISlotSpread extends UISlot {
   }
   
   change(slot:Slot|undefined, slot_:Slot):void {
-    this.children = []
-    const container = this.containerEl.cloneNode(false) as HTMLElement
-    let zIndex = 0
-    for (const wcard of slot_) {
-      const uicard = new UICard(wcard, this, this.app, true, this.viewer, this.classesCard)
-      uicard.element.style.zIndex = (zIndex++).toString()
-      this.children.push(uicard)
-      container.appendChild(uicard.element)
+    const cards_ = Array.from(slot_)
+
+    let idx = this.children.length - 1
+    while (idx > cards_.length - 1) {
+      this.children[idx--].destroy()
     }
-    this.containerEl.replaceWith(container)
-    this.containerEl = container
+    
+    this.children.length = cards_.length
+    idx = this.children.length - 1
+
+    while (idx >= 0) {
+      const wcard = cards_[idx]
+      const child = this.children[idx]
+      if (!child || !child.wcard.equals(wcard)) {
+        const uicard = new UICard(wcard, this, this.app, true, this.viewer, this.classesCard)
+        uicard.element.style.zIndex = idx.toString()
+        this.children[idx] = uicard
+        if (child)
+          child.element.replaceWith(uicard.element)
+        else
+          this.containerEl.insertBefore(uicard.element, this.children[idx+1]?.element)
+      }
+      --idx
+    }
   }
 }
 
@@ -901,6 +914,13 @@ class WorldCard {
   static fromSerialized(serialized:any) {
     return new WorldCard(Card.fromSerialized(serialized.card), serialized.faceUp, serialized.faceUpIsConscious,
                         serialized.turned)
+  }
+
+  equals(rhs:WorldCard):boolean {
+    return this.card.is(rhs.card) &&
+      this.faceUp == rhs.faceUp &&
+      this.faceUpIsConscious == rhs.faceUpIsConscious &&
+      this.turned == rhs.turned
   }
   
   withFaceUp(faceUp:boolean) {
@@ -1236,10 +1256,12 @@ class App {
     for (const [uicard, coords] of uicards) {
       const uicard_ = uicards_.find(u_ => u_.wcard.card.is(uicard.wcard.card))
       if (uicard_) {
-        const end = uicard_.coordsAbsolute()
-        if (coords[0] != end[0] || coords[1] != end[1]) {
-          uicard.animateTo(coords, end, Number(uicard_.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
-          uicard_.fadeTo('0%', '100%', 1000)
+        if (uicard_ != uicard) {
+          const end = uicard_.coordsAbsolute()
+          if (coords[0] != end[0] || coords[1] != end[1]) {
+            uicard.animateTo(coords, end, Number(uicard_.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
+            uicard_.fadeTo('0%', '100%', 1000)
+          }
         }
       } else {
         uicard.animateTo(coords, [coords[0], 0], Number(uicard.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
@@ -1250,13 +1272,14 @@ class App {
     const osc = audioCtx.createOscillator()
     osc.type = 'triangle'
     osc.frequency.value = 100 + Math.random() * 400
-    osc.frequency.setTargetAtTime(osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
+    osc.frequency.setTargetAtTime(osc.frequency.value + osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
     const gain = audioCtx.createGain()
     gain.gain.value = 0.25
     gain.gain.setTargetAtTime(0.0, audioCtx.currentTime + 0.5, 0.1)
     osc.connect(gain)
     gain.connect(audioCtx.destination)
     osc.start()
+    osc.stop(audioCtx.currentTime + 1.0)
     window.setTimeout(() => gain.disconnect(), 1500)
   }
 }
