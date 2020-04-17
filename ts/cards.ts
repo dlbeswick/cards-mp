@@ -748,11 +748,13 @@ class UICard extends UIElement {
   }
   
   fadeTo(start:string, end:string, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
+    const filter = this.element.style.filter
+    
     this.element.style.opacity = end
     this.element.animate(
       [
-        { opacity: start },
-        { opacity: end }
+        { filter: ` opacity(${start})` },
+        { filter: ` opacity(${end})` }
       ],
       {
         duration: msDuration,
@@ -761,7 +763,7 @@ class UICard extends UIElement {
     ).addEventListener("finish", onFinish)
   }
   
-  animateTo(start:Vector, end:Vector, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
+  animateTo(start:Vector, end:Vector, zIndexEnd: number, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
     this.events.removeAll()
     this.element.style.position = 'absolute'
     this.element.style.left = start[0]+'px'
@@ -769,9 +771,8 @@ class UICard extends UIElement {
     document.body.appendChild(this.element)
     this.element.animate(
       [
-        {
-          transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`
-        }
+        { transform: 'translate(0px, 0px)', zIndex: this.element.style.zIndex },
+        { transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`, zIndex: zIndexEnd.toString() }
       ],
       {
         duration: msDuration,
@@ -1237,12 +1238,11 @@ class App {
       if (uicard_) {
         const end = uicard_.coordsAbsolute()
         if (coords[0] != end[0] || coords[1] == end[1]) {
-          uicard.animateTo(coords, end, 1000, uicard.destroy.bind(uicard))
-          uicard.element.style.zIndex = uicard_.element.style.zIndex
+          uicard.animateTo(coords, end, Number(uicard_.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
           uicard_.fadeTo('0%', '100%', 1000)
         }
       } else {
-        uicard.animateTo(coords, [coords[0], 0], 1000, uicard.destroy.bind(uicard))
+        uicard.animateTo(coords, [coords[0], 0], Number(uicard.element.style.zIndex), 1000, uicard.destroy.bind(uicard))
       }
     }
   }
