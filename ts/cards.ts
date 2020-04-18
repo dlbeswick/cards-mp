@@ -1376,20 +1376,37 @@ class PeerPlayer extends Identified<PeerPlayer> {
   private conn:any
   private readonly conns:Connections
   
-  constructor(id:string, conn:any, conns:Connections) {
+  constructor(id:string, conn:any, conns:Connections, app:App) {
     super(id)
     this.conn = conn
     this.conns = conns
+
+    this.keepConnected(app)
   }
 
+  keepConnected(app:App, timeout=1500, reconnects=0) {
+    window.setTimeout(() => {
+      if (!this.open()) {
+        console.log("Lost peer connection, trying to reconnect", this.is)
+        
+        this.conns.connect(this.id, app, 'reconnect', (peerPlayer, conn) => {
+          this.conn = conn
+        })
+        
+        if (reconnects < 10)
+          this.keepConnected(app, timeout * 2, ++reconnects)
+        else
+          new Error(`Can't reconnect to peer ${this.id} after ${reconnects} tries`)
+      } else {
+        this.keepConnected(app, 1500, 0)
+      }
+    }, timeout)
+  }
+  
   open():boolean {
     return this.conn.open
   }
 
-  reconnect(conn:any):boolean {
-    return this.conn = conn
-  }
-  
   send(data:any):boolean {
     try {
       this.conn.send(data)
@@ -1433,9 +1450,13 @@ class Connections {
     const registrant = new Peer(id)
 
     registrant.on('error', (err) => {
-      demandElementById("peerjs-status").innerHTML = "Unregistered"
       this.registering = false
-      throw new Error("Register failed: " + err)
+      if (err.type != 'peer-unavailable') {
+        throw new Error(`Register failed: ${err.type} ${err}`)
+        demandElementById("peerjs-status").innerHTML = "Unregistered"
+      } else {
+        console.debug("Registrant error", err)
+      }
     })
     
     console.log("Registering as " + id)
@@ -1454,16 +1475,17 @@ class Connections {
 
     registrant.on('connection', (conn) => {
       console.log("Peer connected to us", conn)
-      this.connect(conn.peer, app, () => {
-        this.broadcast({announce: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id)}})
-        app.sync(conn.peer)
+      this.connect(conn.peer, app, undefined, () => {
+        this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id)}})
+        if (conn.metadata != 'reconnect')
+          app.sync(conn.peer) // tbd: check playfield sequence # and only sync if necessary
       })
 
       const receive = (data) => {
         console.log('Received', data)
 
-        if (data.announce) {
-          for (const id of data.announce.idPeers)
+        if (data.chern) {
+          for (const id of data.chern.idPeers)
             if (id != registrant.id)
               registrant.connect(id)
         } else if (data.ping) {
@@ -1473,6 +1495,8 @@ class Connections {
           //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
         } else if (data.sync) {
           app.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
+        } else if (data.askSync) {
+          app.sync(conn.peer)
         } else if (data.slotUpdates) {
           let updates:UpdateSlot[]
           let slots:Slot[]
@@ -1500,7 +1524,7 @@ class Connections {
     return this.peers.get(id)
   }
 
-  connect(idPeer:string, app:App, onConnect?:(peer:PeerPlayer) => void) {
+  connect(idPeer:string, app:App, metadata?:any, onConnect?:(peer:PeerPlayer, conn:any) => void) {
     assert(() => idPeer)
     
     if (this.registrant) {
@@ -1512,20 +1536,18 @@ class Connections {
         console.log("Peer connection already open", idPeer)
       } else {
         console.log("Attempting connection to peer", idPeer)
-        const conn = this.registrant.connect(idPeer, {reliable: true})
+        const conn = this.registrant.connect(idPeer, {reliable: true, metadata: metadata})
         
         conn.on('open', () => {
           console.log("Peer opened", conn)
           //demandElementById("connect-status").innerHTML = "Waiting for reply"
 
-          if (peerPlayer)
-            peerPlayer.reconnect(conn)
-          else {
-            peerPlayer = new PeerPlayer(conn.peer, conn, this)
-            this.peers.set(conn.peer, peerPlayer)
+          if (!peerPlayer) {
+            peerPlayer = new PeerPlayer(conn.peer, conn, this, app)
+            this.peers.set(conn.peer, peerPlayer!)
           }
 
-          onConnect && onConnect(peerPlayer)
+          onConnect && onConnect(peerPlayer, conn)
           
           this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
           
