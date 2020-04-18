@@ -1373,19 +1373,32 @@ function revealAll(app:App) {
 declare var Peer
 
 class PeerPlayer extends Identified<PeerPlayer> {
-  conn:any
+  private conn:any
+  private readonly conns:Connections
   
-  constructor(id:string, conn:any) {
+  constructor(id:string, conn:any, conns:Connections) {
     super(id)
     this.conn = conn
+    this.conns = conns
   }
 
   open():boolean {
     return this.conn.open
   }
 
-  send(data:any) {
-    this.conn.send(data)
+  reconnect(conn:any):boolean {
+    return this.conn = conn
+  }
+  
+  send(data:any):boolean {
+    try {
+      this.conn.send(data)
+      return true
+    } catch(e) {
+      console.debug("Couldn't send to peer", this.id, e)
+      this.conns.onPeerError(this)
+      return false
+    }
   }
 }
 
@@ -1505,22 +1518,26 @@ class Connections {
           console.log("Peer opened", conn)
           //demandElementById("connect-status").innerHTML = "Waiting for reply"
 
-          let peerPlayer = new PeerPlayer(conn.peer, conn)
-          this.peers.set(conn.peer, peerPlayer)
+          if (peerPlayer)
+            peerPlayer.reconnect(conn)
+          else {
+            peerPlayer = new PeerPlayer(conn.peer, conn, this)
+            this.peers.set(conn.peer, peerPlayer)
+          }
 
           onConnect && onConnect(peerPlayer)
           
           this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
           
           function ping(secs) {
-            peerPlayer.send({ping: {secs: secs}})
+            peerPlayer!.send({ping: {secs: secs}})
             window.setTimeout(() => ping(secs+30), 30000)
           }
           ping(0)
           
           conn.on('error', (err) => {
             console.log('Peer connection error', idPeer, err)
-            this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
+            this.onPeerError(peerPlayer!)
           })
         })
       }
@@ -1531,12 +1548,12 @@ class Connections {
 
   broadcast(data:any) {
     for (const [id,peer] of this.peers) {
-      try {
-        peer.send(data)
-      } catch(e) {
-        console.debug("Couldn't send to peer", id, e)
-      }
+      peer.send(data)
     }
+  }
+
+  onPeerError(peer:PeerPlayer) {
+    this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 }
 
