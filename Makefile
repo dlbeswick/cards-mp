@@ -11,7 +11,7 @@ www/js/peerjs.min.js: node_modules/peerjs/dist/peerjs.min.js
 
 build: www/css/app.css www/js/app.js www/js/peerjs.min.js | www/js www/css
 
-browser: cordova-prepare
+browser: build
 	"$(CORDOVA)" build browser
 
 cordova: cordova-prepare
@@ -32,13 +32,13 @@ www/js/app.js : $(SRC)
 www/css/app.css : sass/app.scss
 	"$(SASS)" $<:$@
 
-run: build cordova-prepare
+run: build
 	"$(CORDOVA)" run android --device
 
-run-emu: build cordova-prepare
+run-emu: build
 	"$(CORDOVA)" run android --emulator
 
-serve: build browser
+serve: cordova-prepare build browser
 	"$(CORDOVA)" run browser
 
 clean:

@@ -1,5 +1,20 @@
-body {
-	margin: 0px;
+$on-palm:          600px !default;
+$on-laptop:        800px !default;
+
+@mixin media-query($device) {
+  @media screen and (max-width: $device) {
+    @content;
+  }
+}
+
+.flex {
+	display: flex;
+}
+
+@include media-query($on-palm) {
+	.flex {
+		flex-direction: column;
+	}
 }
 
 .error {
@@ -12,6 +27,39 @@ body {
 	border-style: solid;
 	margin: 5px;
 	display: none;
+}
+
+body {
+	margin: 0px;
+}
+
+#ui {
+	input {
+		width: 5em;
+	}
+}
+
+#ui > div {
+	margin: 7px 5px 7px 5px;
+}
+
+#ui input {
+	font-size: large;
+}
+
+#ui button {
+	font-size: large;
+}
+
+#buttons > div {
+	display: inline-block;
+	margin-bottom: 10px;
+}
+
+#players {
+	min-width: 5em;
+	min-height: 3em;
+	background: white;
 }
 
 div.card.selected {
@@ -106,16 +154,4 @@ div.card.selected {
 	font-size: large;
 	box-shadow: inset 1px 1px 3px #777;
 	background: #bbb
-}
-
-#ui div {
-	padding-bottom: 10px;
-}
-
-#ui input {
-	font-size: large;
-}
-
-#ui button {
-	font-size: large;
 }

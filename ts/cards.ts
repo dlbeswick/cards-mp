@@ -1,6 +1,12 @@
 type UpdateSlot = [Slot|undefined, Slot]
 type Vector = [number,number]
 
+function aryRemove(ary:any[], el:any) {
+  const idx = ary.indexOf(el)
+  assert(() => idx != -1)
+  return ary.slice(0, idx).concat(ary.slice(idx+1))
+}
+
 function demandElementByIdTyped<T extends HTMLElement>(id:string, klass:new() => T):T {
   const result = document.getElementById(id)
   if (result == undefined) {
@@ -24,8 +30,9 @@ function errorHandler(message, source?, lineno?, colno?, error?, showAlert=true)
   return true
 }
 
-function assert(test:() => any, message=test.toString(), ...args) {
+function assert(test:() => any, message='', ...args) {
   if (!test()) {
+    message = test.toString() + ", " + message
     for (let arg of args) {
       message += JSON.stringify(arg) + " "
     }
@@ -1068,11 +1075,20 @@ class EventContainerChange extends Event {
 }
 
 class EventPingBack extends Event {
-  secs:number
+  readonly secs:number
   
   constructor(secs:number) {
     super('pingback')
     this.secs = secs
+  }
+}
+
+class EventPeerUpdate extends Event {
+  readonly peers:PeerPlayer[]
+  
+  constructor(peers:PeerPlayer[]) {
+    super('peerupdate')
+    this.peers = peers
   }
 }
 
@@ -1142,7 +1158,7 @@ class Playfield {
     assert(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     if (send) {
-      app.send({slotUpdates: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
+      app.connections.broadcast({slotUpdates: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
     }
     
     let containers_ = this.containers
@@ -1179,15 +1195,12 @@ class Playfield {
   }
 }
 
-declare var Peer
-
 class App {
-  peer:any
-  peerConn:any
   selected:UICard[]|null
   readonly notifierSlot:NotifierSlot
   readonly urlCardImages:string
   readonly urlCardBack:string
+  readonly connections:Connections = new Connections()
   private root:UISlotRoot
   private cardWidth = 74
   private cardHeight = 112
@@ -1231,12 +1244,6 @@ class App {
     return playfield
   }
 
-  send(data:any) {
-    if (this.peerConn) {
-      this.peerConn.send(data)
-    }
-  }
-  
   newGame(idGame:string, playfield?:Playfield) {
     const game = this.games.find(g => g.id == idGame)
     if (!game) {
@@ -1345,41 +1352,112 @@ class App {
       window.setTimeout(() => gain.disconnect(), 1500)
     }
   }
+
+  sync(idPeer='') {
+    const data = { sync: { game: this.game.id, playfield: this.playfieldGet().serialize() } }
+    if (idPeer)
+      this.connections.peerById(idPeer)?.send(data)
+    else
+      this.connections.broadcast(data)
+  }
 }
 
-function host(app:App) {
-  if (app.peer) {
-    return
+function revealAll(app:App) {
+  const updates:UpdateSlot[] = app.playfieldGet().containers.flatMap(
+    cnt => cnt.map(wc => wc.withFaceStateConscious(true, true))
+  )
+  
+  app.playfieldMutate(app.playfieldGet().slotsUpdate(updates, app))
+}
+
+declare var Peer
+
+class PeerPlayer extends Identified<PeerPlayer> {
+  conn:any
+  
+  constructor(id:string, conn:any) {
+    super(id)
+    this.conn = conn
   }
-  
-  const id = (demandElementByIdTyped("peerjs-id", HTMLInputElement)).value.toLowerCase()
-  if (!id) {
-    throw new Error("Id not given")
+
+  open():boolean {
+    return this.conn.open
   }
+
+  send(data:any) {
+    this.conn.send(data)
+  }
+}
+
+class Connections {
+  readonly events:HTMLElement = document.createElement("div")
+  private registrant:any
+  private registering:boolean = false
+  private peers:Map<string, PeerPlayer> = new Map()
   
-  let peer = new Peer("mpcard-"+id)
-  console.log("Registering as " + id)
-  
-  peer.on('open', function(id) {
-    app.peer = peer
-    app.peer.on('error', function(err) {
-      app.peer = null
+  register(app:App, id:string) {
+    assert(() => id)
+    assert(() => !this.registering)
+    
+    if (this.registrant) {
+      if (id == this.registrant.id) {
+        if (this.registrant.disconnected) {
+          demandElementById("peerjs-status").innerHTML = "Re-registering"
+          this.registrant.reconnect()
+        }
+      } else {
+        const registrant = this.registrant
+        demandElementById("peerjs-status").innerHTML = "Re-registering"
+        this.registrant.disconnect()
+        this.registrant = null
+        this.register(app, id)
+      }
+      return
+    }
+
+    this.registering = true
+    
+    const registrant = new Peer(id)
+
+    registrant.on('error', (err) => {
       demandElementById("peerjs-status").innerHTML = "Unregistered"
+      this.registering = false
+      throw new Error("Register failed: " + err)
     })
     
-    demandElementById("peerjs-status").innerHTML = "Registered"
+    console.log("Registering as " + id)
 
-    peer.on('connection', function(conn) {
-      console.debug("Peer connected to us")
+    registrant.on('close', (id) => {
+      demandElementById("peerjs-status").innerHTML = "Unregistered"
+      this.registrant = null
+    })
+    
+    registrant.on('open', (id) => {
+      this.registering = false
+      this.registrant = registrant
+      
+      demandElementById("peerjs-status").innerHTML = "Registered"
+    })
 
-      function receive(data) {
+    registrant.on('connection', (conn) => {
+      console.log("Peer connected to us", conn)
+      this.connect(conn.peer, app, () => {
+        this.broadcast({announce: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id)}})
+        app.sync(conn.peer)
+      })
+
+      const receive = (data) => {
         console.log('Received', data)
 
-        if (data.ping) {
-          demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping.secs))
-          app.send({ping_back: {secs: data.ping.secs}})
+        if (data.announce) {
+          for (const id of data.announce.idPeers)
+            if (id != registrant.id)
+              registrant.connect(id)
+        } else if (data.ping) {
+          //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping.secs))
+          this.peerById(conn.id)?.send({ping_back: {secs: data.ping.secs}})
         } else if (data.ping_back) {
-          demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
+          //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
         } else if (data.sync) {
           app.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
         } else if (data.slotUpdates) {
@@ -1403,50 +1481,63 @@ function host(app:App) {
       // Receive messages
       conn.on('data', receive);
     })
-  })
-
-  peer.on('error', function(err) { throw new Error("PeerJS: " + err) })
-}
-
-function connect(app:App) {
-  if (app.peer) {
-    const idPeer = (demandElementByIdTyped("peerjs-target", HTMLInputElement)).value.toLowerCase()
-
-    if (!idPeer) {
-      throw new Error("Peer's id not given")
-    }
-    
-    console.log("Attempting connection to " + idPeer)
-    const conn = app.peer.connect("mpcard-" + idPeer, {reliable: true})
-    conn.on('open', function() {
-      console.debug("Peer opened")
-      demandElementById("connect-status").innerHTML = "Waiting for reply"
-      app.peerConn = conn
-      function ping(secs) {
-        conn.send({ping: {secs: secs}})
-        window.setTimeout(() => ping(secs+30), 30000)
-      }
-      ping(0)
-      sync(app)
-    });
-    conn.on('error', function(err) {
-      app.peerConn = null
-      demandElementById("connect-status").innerHTML = "Disconnected"
-      throw new Error(`Connection to ${idPeer}: ${err}`)
-    })
   }
-}
 
-function sync(app:App) {
-  app.send({sync: {game: app.gameGet().id, playfield: app.playfieldGet().serialize()}})
-}
+  peerById(id:string):PeerPlayer|undefined {
+    return this.peers.get(id)
+  }
 
-function revealAll(app:App) {
-  const updates:UpdateSlot[] = app.playfieldGet().containers.flatMap(
-    cnt => cnt.map(wc => wc.withFaceStateConscious(true, true))
-  )
-  
-  app.playfieldMutate(app.playfieldGet().slotsUpdate(updates, app))
+  connect(idPeer:string, app:App, onConnect?:(peer:PeerPlayer) => void) {
+    assert(() => idPeer)
+    
+    if (this.registrant) {
+      if (this.registrant.id == idPeer)
+        throw new Error("Can't connect to your own id")
+      
+      let peerPlayer = this.peers.get(idPeer)
+      if (peerPlayer && peerPlayer.open()) {
+        console.log("Peer connection already open", idPeer)
+      } else {
+        console.log("Attempting connection to peer", idPeer)
+        const conn = this.registrant.connect(idPeer, {reliable: true})
+        
+        conn.on('open', () => {
+          console.log("Peer opened", conn)
+          //demandElementById("connect-status").innerHTML = "Waiting for reply"
+
+          let peerPlayer = new PeerPlayer(conn.peer, conn)
+          this.peers.set(conn.peer, peerPlayer)
+
+          onConnect && onConnect(peerPlayer)
+          
+          this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
+          
+          function ping(secs) {
+            peerPlayer.send({ping: {secs: secs}})
+            window.setTimeout(() => ping(secs+30), 30000)
+          }
+          ping(0)
+          
+          conn.on('error', (err) => {
+            console.log('Peer connection error', idPeer, err)
+            this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
+          })
+        })
+      }
+    } else {
+      throw new Error("Not registered")
+    }
+  }
+
+  broadcast(data:any) {
+    for (const [id,peer] of this.peers) {
+      try {
+        peer.send(data)
+      } catch(e) {
+        console.debug("Couldn't send to peer", id, e)
+      }
+    }
+  }
 }
 
 abstract class Game extends Identified<Game> {
@@ -1598,10 +1689,31 @@ function run(urlCardImages:string, urlCardBack:string) {
     "click",
     () => demandElementById("error").style.display = 'none'
   )
+
+  const tblPlayers = (demandElementByIdTyped("players", HTMLTableElement))
+  app.connections.events.addEventListener("peerupdate", (e:EventPeerUpdate) => {
+    tblPlayers.innerHTML = ''
+    for (const peer of e.peers) {
+      const row = tblPlayers.insertRow()
+      row.insertCell().innerText = peer.id
+      row.insertCell().innerText = peer.open() ? 'Connected' : 'Disconnected'
+    }
+  })
   
-  demandElementById("id-get").addEventListener("click", () => host(app))
-  demandElementById("connect").addEventListener("click", () => connect(app))
-  demandElementById("sync").addEventListener("click", () => sync(app))
+  demandElementById("id-get").addEventListener("click", () => {
+    const id = (demandElementByIdTyped("peerjs-id", HTMLInputElement)).value.toLowerCase()
+    if (!id) {
+      throw new Error("Id not given")
+    }
+    
+    app.connections.register(app, "mpcard-" + id)
+  })
+  demandElementById("connect").addEventListener("click", () => {
+    const id = demandElementByIdTyped("peerjs-target", HTMLInputElement).value
+    if (!app.connections.peerById(id))
+      app.connections.connect("mpcard-" + id, app)
+  })
+  demandElementById("sync").addEventListener("click", () => app.sync())
   demandElementById("player-next").addEventListener("click", () => {
     if (app.viewerGet() == p0) {
       app.viewerSet(p1)
@@ -1609,16 +1721,16 @@ function run(urlCardImages:string, urlCardBack:string) {
       app.viewerSet(p0)
     }
   })
-  demandElementById("connect-status").addEventListener(
+/*  demandElementById("connect-status").addEventListener(
     "pingback",
     function (e:EventPingBack) { this.innerHTML = `Connected for ${e.secs}s` }
-  )
+  )*/
   
   demandElementById("game-new").addEventListener(
     "click",
     () => {
       app.newGame(demandElementByIdTyped("game-type", HTMLSelectElement).value)
-      sync(app)
+      app.sync()
     }
   )
   demandElementById("reveal-all").addEventListener("click", () => revealAll(app))
