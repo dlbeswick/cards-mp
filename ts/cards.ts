@@ -27,6 +27,7 @@ function errorHandler(message, source?, lineno?, colno?, error?, showAlert=true)
     alert(message)
   demandElementById("error").style.display = "block"
   demandElementById("error").innerHTML = message + "<br/>" + "Line: " + lineno + "<br/>" + source
+  console.error(message)
   return true
 }
 
@@ -1384,38 +1385,31 @@ class PeerPlayer extends Identified<PeerPlayer> {
     this.keepConnected(app)
   }
 
-  keepConnected(app:App, timeout=1500, reconnects=0) {
-    window.setTimeout(() => {
-      if (!this.open()) {
-        console.log("Lost peer connection, trying to reconnect", this.is)
+  keepConnected(app:App, timeout=15000, failTimeout=2000, reconnects=0) {
+    if (this.open()) {
+      window.setTimeout(() => this.keepConnected(app, timeout, 2000, 0), timeout)
+    } else {
+      if (reconnects < 5) {
+        console.log("Lost peer connection, trying to reconnect", this.id, reconnects, failTimeout)
         
-        this.conns.connect(this.id, app, 'reconnect', (peerPlayer, conn) => {
+        this.conns.connect(this.id, app, (peerPlayer, conn) => {
           this.conn = conn
         })
         
-        if (reconnects < 10)
-          this.keepConnected(app, timeout * 2, ++reconnects)
-        else
-          new Error(`Can't reconnect to peer ${this.id} after ${reconnects} tries`)
+        window.setTimeout(() => this.keepConnected(app, timeout, failTimeout * 2, ++reconnects), failTimeout)
       } else {
-        this.keepConnected(app, 1500, 0)
+        console.warn(`Can't reconnect to peer ${this.id} after ${reconnects} tries`)
+        this.conns.onPeerLost(this)
       }
-    }, timeout)
+    }
   }
   
   open():boolean {
     return this.conn.open
   }
 
-  send(data:any):boolean {
-    try {
-      this.conn.send(data)
-      return true
-    } catch(e) {
-      console.debug("Couldn't send to peer", this.id, e)
-      this.conns.onPeerError(this)
-      return false
-    }
+  send(data:any) {
+    this.conn.send(data)
   }
 }
 
@@ -1452,10 +1446,11 @@ class Connections {
     registrant.on('error', (err) => {
       this.registering = false
       if (err.type != 'peer-unavailable') {
-        throw new Error(`Register failed: ${err.type} ${err}`)
+        throw new Error(`${err.type} ${err}`)
+        this.registrant = null
         demandElementById("peerjs-status").innerHTML = "Unregistered"
       } else {
-        console.debug("Registrant error", err)
+        console.log("Registrant error", err.type, err)
       }
     })
     
@@ -1475,11 +1470,13 @@ class Connections {
 
     registrant.on('connection', (conn) => {
       console.log("Peer connected to us", conn)
-      this.connect(conn.peer, app, undefined, () => {
-        this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id)}})
-        if (conn.metadata != 'reconnect')
-          app.sync(conn.peer) // tbd: check playfield sequence # and only sync if necessary
-      })
+      if (!this.peerById(conn.peer) || !this.peerById(conn.peer)!.open()) {
+        this.connect(conn.peer, app, () => {
+          this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id)}})
+          if (conn.metadata != 'reconnect')
+            app.sync(conn.peer) // tbd: check playfield sequence # and only sync if necessary
+        })
+      }
 
       const receive = (data) => {
         console.log('Received', data)
@@ -1516,7 +1513,11 @@ class Connections {
       }
       
       // Receive messages
-      conn.on('data', receive);
+      conn.on('data', receive)
+      conn.on('error', (e) => {
+        const peer = this.peerById(conn.peer)
+        peer && this.onPeerError(peer, e)
+      })
     })
   }
 
@@ -1524,27 +1525,28 @@ class Connections {
     return this.peers.get(id)
   }
 
-  connect(idPeer:string, app:App, metadata?:any, onConnect?:(peer:PeerPlayer, conn:any) => void) {
+  connect(idPeer:string, app:App, onConnect?:(peer:PeerPlayer, conn:any) => void) {
     assert(() => idPeer)
     
     if (this.registrant) {
       if (this.registrant.id == idPeer)
         throw new Error("Can't connect to your own id")
       
-      let peerPlayer = this.peers.get(idPeer)
+      const peerPlayer = this.peers.get(idPeer)
       if (peerPlayer && peerPlayer.open()) {
         console.log("Peer connection already open", idPeer)
       } else {
-        console.log("Attempting connection to peer", idPeer)
-        const conn = this.registrant.connect(idPeer, {reliable: true, metadata: metadata})
+        console.log("Attempting " + (peerPlayer ? "re-" : '') + "connection to peer", idPeer)
+        const conn = this.registrant.connect(idPeer, {reliable: true, metadata: peerPlayer ? 'reconnect' : undefined})
         
         conn.on('open', () => {
           console.log("Peer opened", conn)
           //demandElementById("connect-status").innerHTML = "Waiting for reply"
 
+          let peerPlayer = this.peers.get(idPeer)
           if (!peerPlayer) {
             peerPlayer = new PeerPlayer(conn.peer, conn, this, app)
-            this.peers.set(conn.peer, peerPlayer!)
+            this.peers.set(conn.peer, peerPlayer)
           }
 
           onConnect && onConnect(peerPlayer, conn)
@@ -1552,14 +1554,15 @@ class Connections {
           this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
           
           function ping(secs) {
-            peerPlayer!.send({ping: {secs: secs}})
-            window.setTimeout(() => ping(secs+30), 30000)
+            if (peerPlayer!.open()) {
+              peerPlayer!.send({ping: {secs: secs}})
+              window.setTimeout(() => ping(secs+30), 30000)
+            }
           }
           ping(0)
           
           conn.on('error', (err) => {
-            console.log('Peer connection error', idPeer, err)
-            this.onPeerError(peerPlayer!)
+            this.onPeerError(peerPlayer!, err)
           })
         })
       }
@@ -1574,7 +1577,13 @@ class Connections {
     }
   }
 
-  onPeerError(peer:PeerPlayer) {
+  onPeerError(peer:PeerPlayer, error:any) {
+    console.log('Peer connection error', peer.id, error)
+    this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
+  }
+
+  onPeerLost(peer:PeerPlayer) {
+    this.peers.delete(peer.id)
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 }
