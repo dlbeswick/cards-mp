@@ -107,19 +107,21 @@ abstract class Identified<T, IdType=string> {
 }
 
 class ContainerSlot extends Identified<ContainerSlot> implements Iterable<Slot> {
+  readonly secret:boolean
   private readonly slots:Slot[] = []
   
-  constructor(id:string, slots:Slot[] = [new Slot(Date.now(), id)]) {
+  constructor(id:string, slots?:Slot[], secret=false) {
     super(id)
-    this.slots = slots
+    this.slots = slots ?? [new Slot(Date.now(), id)]
+    this.secret = secret
   }
 
   static fromSerialized(s:any):ContainerSlot {
-    return new ContainerSlot(s.id, s.slots.map(sl => Slot.fromSerialized(sl)))
+    return new ContainerSlot(s.id, s.slots.map(sl => Slot.fromSerialized(sl)), s.secret)
   }
 
   serialize():any {
-    return { ...super.serialize(), slots: this.slots.map(s => s.serialize()) }
+    return { ...super.serialize(), slots: this.slots.map(s => s.serialize()), secret: this.secret }
   }
 
   first():Slot {
@@ -128,7 +130,7 @@ class ContainerSlot extends Identified<ContainerSlot> implements Iterable<Slot> 
   }
   
   add(slots:Slot[]):ContainerSlot {
-    return new ContainerSlot(this.id, this.slots.concat(slots))
+    return new ContainerSlot(this.id, this.slots.concat(slots), this.secret)
   }
 
   slot(id:number):Slot {
@@ -185,9 +187,10 @@ class ContainerSlot extends Identified<ContainerSlot> implements Iterable<Slot> 
       if (slot) {
         const idx = this.slots.findIndex(s => s.is(slot))
         assert(() => idx != -1)
-        return new ContainerSlot(this.id, this.slots.slice(0, idx).concat([slot_]).concat(this.slots.slice(idx+1)))
+        return new ContainerSlot(this.id, this.slots.slice(0, idx).concat([slot_]).concat(this.slots.slice(idx+1)),
+                                 this.secret)
       } else {
-        return new ContainerSlot(this.id, this.slots.concat([slot_]))
+        return new ContainerSlot(this.id, this.slots.concat([slot_]), this.secret)
       }
     } else {
       return this
@@ -224,8 +227,8 @@ class Slot extends Identified<Slot, number> implements Iterable<WorldCard> {
     return { ...super.serialize(), cards: this.cards.map(c => c.serialize()), idCnt: this.idCnt }
   }
   
-  container(playfield:Playfield):Slot {
-    return playfield.container(this.idCnt).slot(this.id)
+  container(playfield:Playfield):ContainerSlot {
+    return playfield.container(this.idCnt)
   }
   
   add(wcards:WorldCard[], before?:Card):Slot {
@@ -483,7 +486,7 @@ abstract class UISlot extends UIActionable {
         if (wc.faceUpIsConscious)
           faceUp = wc.faceUp
         else
-          faceUp = true
+          faceUp = !slotDst.container(this.app.playfieldGet()).secret
         return wc.withFaceUp(faceUp)
       }))
       
@@ -553,7 +556,7 @@ class UISlotSpread extends UISlot {
   private containerEl:HTMLElement
   
   constructor(idCnt:string, app:App, owner:Player|null, viewer:Player, idSlot?:number,
-              minHeight:string=`${app.cardHeightGet()}px`, width?:string, classesSlot?:string[],
+              minHeight:string=`${app.cardHeightGet() + 25}px`, width?:string, classesSlot?:string[],
               classesCard?:string[], actionLongPress='flip', selectionMode='single') {
     
     super(document.createElement("div"), idCnt, app, owner, viewer, idSlot, actionLongPress, selectionMode)
@@ -1643,7 +1646,7 @@ class GameGinRummy extends Game {
     assert(() => opponent)
     
     const uislotOpp = new UISlotSpread(opponent.idSlots[0], app, opponent, viewer, undefined,
-                                       `${app.cardHeightGet()}px`, '100%')
+                                       `${app.cardHeightGet()+25}px`, '100%')
     uislotOpp.init()
     root.add(uislotOpp)
 
@@ -1666,7 +1669,7 @@ class GameGinRummy extends Game {
 
     root.add(divPlay)
     
-    const uislotBottom = new UISlotSpread(player.idSlots[0], app, player, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
+    const uislotBottom = new UISlotSpread(player.idSlots[0], app, player, viewer, undefined, `${app.cardHeightGet()+25}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
   }
@@ -1699,7 +1702,7 @@ class GameDummy extends Game {
     const opponent:Player = app.playersGet().find(p => p.idSlots[0] && p != player)!
     assert(() => opponent)
     
-    const uislotTop = new UISlotSpread(opponent.idSlots[0], app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
+    const uislotTop = new UISlotSpread(opponent.idSlots[0], app, opponent, viewer, undefined, `${app.cardHeightGet()+25}px`, '100%')
     uislotTop.init()
     root.add(uislotTop)
 
@@ -1712,7 +1715,7 @@ class GameDummy extends Game {
     uislotMeldOpp.element.style.flexGrow = "1" // tbd: encode in UIElement
     divPlay.add(uislotMeldOpp)
     
-    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()+'px', '100%',
+    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, (app.cardHeightGet()+25)+'px', '100%',
                                          undefined, undefined, 'flip', 'all-proceeding')
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1" // tbd: encode in UIElement
@@ -1730,7 +1733,7 @@ class GameDummy extends Game {
     divPlay.add(divCombiner)
     
     const uislotBottom = new UISlotSpread(player.idSlots[0], app, player, viewer, undefined,
-                                          `${app.cardHeightGet()}px`, '100%')
+                                          `${app.cardHeightGet()+25}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
 
@@ -1751,6 +1754,7 @@ class GamePoker extends Game {
     return new Playfield(
       [new ContainerSlot("p0"),
        new ContainerSlot("p1"),
+       new ContainerSlot("waste-secret", undefined, true),
        new ContainerSlot("waste"),
        new ContainerSlot("stock", [new Slot(Date.now(), "stock",
                                             deck.map(c => new WorldCard(c, false)))])]
@@ -1765,14 +1769,20 @@ class GamePoker extends Game {
     assert(() => opponent)
     
     const uislotOpp = new UISlotSpread(opponent.idSlots[0], app, opponent, viewer, undefined,
-                                       `${app.cardHeightGet()}px`, '100%')
+                                       `${app.cardHeightGet()+25}px`, '100%')
     uislotOpp.init()
     root.add(uislotOpp)
 
     // Refactor as UI element...
     const divPlay = new UIContainerFlex()
     
-    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px', '100%')
+    let uislotWaste = new UISlotSpread('waste-secret', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px',
+                                       '100%')
+    uislotWaste.init()
+    uislotWaste.element.style.flexGrow = "1"
+    divPlay.add(uislotWaste)
+
+    uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px', '100%')
     uislotWaste.init()
     uislotWaste.element.style.flexGrow = "1"
     divPlay.add(uislotWaste)
@@ -1789,7 +1799,7 @@ class GamePoker extends Game {
     root.add(divPlay)
     
     const uislotBottom = new UISlotSpread(player.idSlots[0], app, player, viewer, undefined,
-                                          `${app.cardHeightGet()}px`, '100%')
+                                          `${app.cardHeightGet()+25}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
   }
