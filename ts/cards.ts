@@ -7,6 +7,10 @@ function aryRemove(ary:any[], el:any) {
   return ary.slice(0, idx).concat(ary.slice(idx+1))
 }
 
+function withElement<T extends HTMLElement>(id:string, klass:new() => T, func:(T) => void) {
+  func(demandElementByIdTyped(id, klass))
+}
+
 function demandElementByIdTyped<T extends HTMLElement>(id:string, klass:new() => T):T {
   const result = document.getElementById(id)
   if (result == undefined) {
@@ -288,11 +292,11 @@ class Slot extends Identified<Slot, number> implements Iterable<WorldCard> {
 
 class Player {
   readonly name:string
-  readonly idSlot:string
+  readonly idSlots:string[]
   
-  constructor(name:string, idSlot:string) {
+  constructor(name:string, idSlots:string[]) {
     this.name = name
-    this.idSlot = idSlot
+    this.idSlots = idSlots
   }
 }
 
@@ -1190,7 +1194,7 @@ class Playfield {
       )
     }
     
-    app.postSlotChange(preSlotChangeInfo)
+    app.postSlotChange(preSlotChangeInfo, send)
     
     return playfield_
   }
@@ -1202,13 +1206,13 @@ class App {
   readonly urlCardImages:string
   readonly urlCardBack:string
   readonly connections:Connections = new Connections()
+  readonly games:Game[]
   private root:UISlotRoot
   private cardWidth = 74
   private cardHeight = 112
   private viewer:Player
   private playfield:Playfield = new Playfield([])
   private players:Player[]
-  private games:Game[]
   private game:Game
   private audioCtx?:AudioContext
   
@@ -1306,7 +1310,9 @@ class App {
       map(uicard => [uicard, uicard.coordsAbsolute()])
   }
 
-  postSlotChange(uicards:[UICard, Vector][]) {
+  postSlotChange(uicards:[UICard, Vector][], localAction:boolean) {
+    const msDuration = localAction ? 250 : 1000
+    
     const uicards_ = this.root.uicardsForCards(uicards.map(u => u[0].wcard.card))
     for (const [uicard, start] of uicards) {
       const uicard_ = uicards_.find(u_ => u_.wcard.card.is(uicard.wcard.card))
@@ -1318,7 +1324,7 @@ class App {
             uicard_.fadeTo('0%', '100%', 250)
             uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
           } else {
-            uicard.animateTo(start, end, Number(uicard_.element.style.zIndex), 1000,
+            uicard.animateTo(start, end, Number(uicard_.element.style.zIndex), msDuration,
                              () => {
                                uicard_.element.style.visibility = 'visible'
                                if (uicard.equals(uicard_)) {
@@ -1332,7 +1338,7 @@ class App {
           }
         }
       } else {
-        uicard.animateTo(start, [start[0], -200], Number(uicard.element.style.zIndex), 1000,
+        uicard.animateTo(start, [start[0], -200], Number(uicard.element.style.zIndex), msDuration,
                          uicard.destroy.bind(uicard))
       }
     }
@@ -1341,16 +1347,27 @@ class App {
     if (ctx) {
       const osc = ctx.createOscillator()
       osc.type = 'triangle'
-      osc.frequency.value = 200 + Math.random() * 300
-      osc.frequency.setTargetAtTime(osc.frequency.value + osc.frequency.value * (0.5 + Math.random() * 1.5), 0, 1.2)
+      osc.frequency.value = 200 + Math.random() * 500
+      osc.frequency.setTargetAtTime(200 + Math.random() * 500, 0, msDuration / 1000)
       const gain = ctx.createGain()
       gain.gain.value = 0.25
-      gain.gain.setTargetAtTime(0.0, ctx.currentTime + 0.5, 0.1)
+      gain.gain.setTargetAtTime(0.0, ctx.currentTime + msDuration / 1000 / 2, 0.1)
       osc.connect(gain)
       gain.connect(ctx.destination)
+
+      const mod = ctx.createOscillator()
+      mod.frequency.value = 10 + Math.random() * 10
+      mod.frequency.setTargetAtTime(1 + Math.random() * 5, 0, msDuration / 1000)
+      const gmod = ctx.createGain()
+      gmod.gain.value = 100
+      mod.connect(gmod)
+      gmod.connect(osc.frequency)
+      mod.start(0)
+
+      osc.onended = () => { gain.disconnect(); gmod.disconnect(); mod.stop(0) }
+      
       osc.start(0)
-      osc.stop(ctx.currentTime + 1.0)
-      window.setTimeout(() => gain.disconnect(), 1500)
+      osc.stop(ctx.currentTime + msDuration / 1000)
     }
   }
 
@@ -1589,13 +1606,20 @@ class Connections {
 }
 
 abstract class Game extends Identified<Game> {
+  readonly description:string
+
+  constructor(id:string, description:string) {
+    super(id)
+    this.description = description
+  }
+  
   abstract playfield():Playfield
   abstract makeUI(app:App, root:UISlotRoot)
 }
 
 class GameGinRummy extends Game {
   constructor() {
-    super("gin-rummy")
+    super("gin-rummy", "Gin Rummy")
   }
   
   playfield():Playfield {
@@ -1613,10 +1637,13 @@ class GameGinRummy extends Game {
   
   makeUI(app:App, root:UISlotRoot) {
     const viewer = app.viewerGet()
-    const opponent = app.playersGet().find(p => p != viewer) as Player
+    const player = viewer.idSlots[0] ? viewer : app.playersGet()[0]!
+    assert(() => player)
+    const opponent:Player = app.playersGet().find(p => p.idSlots[0] && p != player)!
     assert(() => opponent)
     
-    const uislotOpp = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
+    const uislotOpp = new UISlotSpread(opponent.idSlots[0], app, opponent, viewer, undefined,
+                                       `${app.cardHeightGet()}px`, '100%')
     uislotOpp.init()
     root.add(uislotOpp)
 
@@ -1639,7 +1666,7 @@ class GameGinRummy extends Game {
 
     root.add(divPlay)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
+    const uislotBottom = new UISlotSpread(player.idSlots[0], app, player, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
   }
@@ -1647,7 +1674,7 @@ class GameGinRummy extends Game {
 
 class GameDummy extends Game {
   constructor() {
-    super("dummy")
+    super("dummy", "Dummy / 500 Rum")
   }
   
   playfield():Playfield {
@@ -1667,17 +1694,19 @@ class GameDummy extends Game {
   
   makeUI(app:App, root:UISlotRoot) {
     const viewer = app.viewerGet()
-    const opponent = app.playersGet().find(p => p != viewer) as Player
+    const player = viewer.idSlots[0] ? viewer : app.playersGet()[0]!
+    assert(() => player)
+    const opponent:Player = app.playersGet().find(p => p.idSlots[0] && p != player)!
     assert(() => opponent)
     
-    const uislotTop = new UISlotSpread(opponent.idSlot, app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
+    const uislotTop = new UISlotSpread(opponent.idSlots[0], app, opponent, viewer, undefined, `${app.cardHeightGet()}px`, '100%')
     uislotTop.init()
     root.add(uislotTop)
 
     // Refactor as UI element...
     const divPlay = new UIContainerFlex('column')
     
-    const uislotMeldOpp = new UIContainerSlotsMulti(opponent.idSlot+'-meld', app, null, viewer,
+    const uislotMeldOpp = new UIContainerSlotsMulti(opponent.idSlots[0]+'-meld', app, null, viewer,
                                                     `${app.cardHeightGet()}px`, 'turn')
     uislotMeldOpp.init()
     uislotMeldOpp.element.style.flexGrow = "1" // tbd: encode in UIElement
@@ -1689,7 +1718,7 @@ class GameDummy extends Game {
     uislotWaste.element.style.flexGrow = "1" // tbd: encode in UIElement
     divPlay.add(uislotWaste)
     
-    const uislotMeldPlay = new UIContainerSlotsMulti(viewer.idSlot+'-meld', app, null, viewer,
+    const uislotMeldPlay = new UIContainerSlotsMulti(player.idSlots[0]+'-meld', app, null, viewer,
                                                      `${app.cardHeightGet()}px`, 'turn')
     uislotMeldPlay.init()
     uislotMeldPlay.element.style.flexGrow = "1"  // tbd: encode in UIElement
@@ -1700,8 +1729,8 @@ class GameDummy extends Game {
     const divCombiner = new UIContainerFlex('row', true)
     divPlay.add(divCombiner)
     
-    const uislotBottom = new UISlotSpread(viewer.idSlot, app, viewer, viewer, undefined, `${app.cardHeightGet()}px`,
-                                          '100%')
+    const uislotBottom = new UISlotSpread(player.idSlots[0], app, player, viewer, undefined,
+                                          `${app.cardHeightGet()}px`, '100%')
     uislotBottom.init()
     root.add(uislotBottom)
 
@@ -1712,22 +1741,78 @@ class GameDummy extends Game {
   }
 }
 
+class GamePoker extends Game {
+  constructor() {
+    super("poker", "Poker")
+  }
+  
+  playfield():Playfield {
+    const deck = shuffled(deck52())
+    return new Playfield(
+      [new ContainerSlot("p0"),
+       new ContainerSlot("p1"),
+       new ContainerSlot("waste"),
+       new ContainerSlot("stock", [new Slot(Date.now(), "stock",
+                                            deck.map(c => new WorldCard(c, false)))])]
+    )
+  }
+  
+  makeUI(app:App, root:UISlotRoot) {
+    const viewer = app.viewerGet()
+    const player = viewer.idSlots[0] ? viewer : app.playersGet()[0]!
+    assert(() => player)
+    const opponent:Player = app.playersGet().find(p => p.idSlots[0] && p != player)!
+    assert(() => opponent)
+    
+    const uislotOpp = new UISlotSpread(opponent.idSlots[0], app, opponent, viewer, undefined,
+                                       `${app.cardHeightGet()}px`, '100%')
+    uislotOpp.init()
+    root.add(uislotOpp)
+
+    // Refactor as UI element...
+    const divPlay = new UIContainerFlex()
+    
+    const uislotWaste = new UISlotSpread('waste', app, null, viewer, undefined, app.cardHeightGet()*1.5+'px', '100%')
+    uislotWaste.init()
+    uislotWaste.element.style.flexGrow = "1"
+    divPlay.add(uislotWaste)
+    
+    const divStock = new UIContainerFlex('column', true)
+    const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
+    divStockSpacer.style.flexGrow = "1"
+    divStock.element.appendChild(divStockSpacer)
+    const uislotStock = new UISlotSingle('stock', app, null, viewer, '', undefined)
+    uislotStock.init()
+    divStock.add(uislotStock)
+    divPlay.add(divStock)
+
+    root.add(divPlay)
+    
+    const uislotBottom = new UISlotSpread(player.idSlots[0], app, player, viewer, undefined,
+                                          `${app.cardHeightGet()}px`, '100%')
+    uislotBottom.init()
+    root.add(uislotBottom)
+  }
+}
+
 let appGlobal:App
 
 function run(urlCardImages:string, urlCardBack:string) {
-  const p0 = new Player('Player 1', 'p0')
-  const p1 = new Player('Player 2', 'p1')
+  const p0 = new Player('Player 1', ['p0'])
+  const p1 = new Player('Player 2', ['p1'])
+  const pSpectator = new Player('Spectator', [])
   
   const app = new App(
     [
       new GameGinRummy(),
       new GameDummy(),
+      new GamePoker(),
     ],
     new NotifierSlot(),
     urlCardImages,
     urlCardBack,
     p0,
-    [p0, p1],
+    [p0, p1, pSpectator],
     new UISlotRoot()
   )
   
@@ -1757,17 +1842,13 @@ function run(urlCardImages:string, urlCardBack:string) {
     app.connections.register(app, "mpcard-" + id)
   })
   demandElementById("connect").addEventListener("click", () => {
-    const id = demandElementByIdTyped("peerjs-target", HTMLInputElement).value
+    const id = demandElementByIdTyped("peerjs-target", HTMLInputElement).value.toLowerCase()
     if (!app.connections.peerById(id))
       app.connections.connect("mpcard-" + id, app)
   })
   demandElementById("sync").addEventListener("click", () => app.sync())
   demandElementById("player-next").addEventListener("click", () => {
-    if (app.viewerGet() == p0) {
-      app.viewerSet(p1)
-    } else {
-      app.viewerSet(p0)
-    }
+    app.viewerSet(app.playersGet()[(app.playersGet().indexOf(app.viewerGet()) + 1) % app.playersGet().length])
   })
 /*  demandElementById("connect-status").addEventListener(
     "pingback",
@@ -1781,6 +1862,23 @@ function run(urlCardImages:string, urlCardBack:string) {
       app.sync()
     }
   )
+
+  withElement("game-type", HTMLSelectElement, (elGames) => {
+    for (const game of app.games) {
+      const opt = document.createElement("option")
+      opt.text = game.description
+      opt.value = game.id
+      elGames.add(opt)
+    }
+    elGames.addEventListener(
+      "click",
+      () => {
+        app.newGame(demandElementByIdTyped("game-type", HTMLSelectElement).value)
+        app.sync()
+      }
+    )
+  })
+  
   demandElementById("reveal-all").addEventListener("click", () => revealAll(app))
 
   function cardSizeSet() {
