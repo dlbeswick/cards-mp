@@ -62,12 +62,6 @@ body {
 	background: white;
 }
 
-div.card.selected {
-	img {
-		filter: invert(100%);
-	}
-}
-
 .highlighted {
 	border: 2px #88ff88;
 }
@@ -144,9 +138,14 @@ div.card.selected {
 		-webkit-user-select: none;
 		user-select: none;
 		filter: invert(0%);
+		transition: filter 0.1s;
 	}
 }
 
+.card.selected img {
+	filter: invert(100%);
+	transition: filter 0.1s;
+}
 
 .card.turned img {
 	-webkit-transform: rotate(-90deg) translate(20px);

@@ -714,6 +714,7 @@ class UICard extends UIElement {
       this.element.classList.add('turned')
     }
     
+    svg.setAttribute('width', app.cardWidthGet().toString())
     svg.setAttribute('height', app.cardHeightGet().toString())
 
     // Adding events to a small-width div works fine on Chrome and FF, but iOS ignores clicks on the image if it
