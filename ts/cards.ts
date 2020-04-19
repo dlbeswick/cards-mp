@@ -351,12 +351,15 @@ abstract class UIContainer extends UIElement {
 }
 
 class UIContainerFlex extends UIContainer {
-  constructor(direction='row', grow=false) {
+  constructor(direction:string|undefined='row', grow=false) {
     super(document.createElement("div"))
     this.element.style.display = 'flex'
     if (grow)
       this.element.style.flexGrow = "1"
-    this.element.style.flexDirection = direction
+    if (direction == undefined)
+      this.element.classList.add("flex")
+    else
+      this.element.style.flexDirection = direction
   }
 }
 
@@ -768,7 +771,7 @@ class UICard extends UIElement {
   }
 
   equals(rhs:UICard) {
-    return this.wcard.equals(rhs.wcard) && this.faceUp == rhs.faceUp
+    return this.wcard.card.is(rhs.wcard.card) && this.faceUp == rhs.faceUp
   }
   
   destroy() {
@@ -1787,7 +1790,7 @@ class GamePoker extends Game {
     uislotWaste.element.style.flexGrow = "1"
     divPlay.add(uislotWaste)
     
-    const divStock = new UIContainerFlex('column', true)
+    const divStock = new UIContainerFlex(undefined, true)
     const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
     divStockSpacer.style.flexGrow = "1"
     divStock.element.appendChild(divStockSpacer)

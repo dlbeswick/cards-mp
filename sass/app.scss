@@ -93,7 +93,7 @@ div.card.selected {
 
 .slot-overlap {
 	// Increase right padding by reverse of largest-size card width - overlap width, so cards wrap appropriately.
-	padding-right: 60px;
+	padding-right: 50px;
 }
 
 .slot-overlap .card {
@@ -120,6 +120,7 @@ div.card.selected {
 
 .slot-single {
 	padding-bottom: 0;
+	align-self: flex-end;
 						
 	label {
 		-webkit-touch-callout: none;
