@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="50" height="50">
+  <defs>
+	<style>
+	  g g {
+		display: none;
+	  }
+	  g g:target {
+		display: inline;
+	  }
+	</style>
+	
+	<g id="chip">
+	  <circle cx="25" cy="25" r="24" stroke="black"/>
+	</g>
+  </defs>
+
+  <g font-size="30" font-family="Arial">
+	<g id="10">
+	  <use xlink:href="#chip" fill="white"/>
+	  <text x="8" y="34" fill="white" stroke="black" stroke-width=".5">10</text>
+	</g>
+	
+	<g id="25">
+	  <use xlink:href="#chip" fill="green"/>
+	  <text x="8" y="34" fill="white" stroke="black" stroke-width=".5">25</text>
+	</g>
+
+	<g id="50">
+	  <use xlink:href="#chip" fill="yellow"/>
+	  <text x="8" y="34" fill="white" stroke="black" stroke-width=".5">50</text>
+	</g>
+
+	<g id="100" font-size="20" font-family="Arial">
+	  <use xlink:href="#chip" fill="black"/>
+	  <text x="8" y="31" fill="white" stroke="black" stroke-width=".5">100</text>
+	</g>
+  </g>
+</svg>
