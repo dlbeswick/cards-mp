@@ -143,6 +143,7 @@ div.card.selected {
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
 		user-select: none;
+		filter: invert(0%);
 	}
 }
 
