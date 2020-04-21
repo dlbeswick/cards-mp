@@ -12,7 +12,7 @@ function aryEquals(lhs:any[], rhs:any[]) {
   return true
 }
 
-function aryIdEquals<T, U>(lhs:Identified<T, U>[], rhs:Identified<T, U>[]) {
+function aryIdEquals<T extends Identified<T>>(lhs:T[], rhs:T[]) {
   if (lhs.length != rhs.length)
     return false
 
@@ -108,13 +108,17 @@ class EventListeners {
   }
 }
 
-abstract class Identified<T, IdType=string> {
+interface Identified<T> {
+  is(rhs:T):boolean
+}
+
+abstract class IdentifiedByVal<T extends IdentifiedByVal<T, IdType>, IdType> implements Identified<T> {
   abstract id():IdType
   
-  is(rhs:Identified<T, IdType>):boolean {
+  is(rhs:T):boolean {
     return this.isId(rhs.id())
   }
-
+  
   isId(id:IdType):boolean {
     return this.id() == id
   }
@@ -124,22 +128,24 @@ abstract class Identified<T, IdType=string> {
   }
 }
 
-abstract class IdentifiedVar<T, IdType=string> extends Identified<T, IdType> {
-  readonly _id:IdType
+abstract class IdentifiedVar<T extends IdentifiedVar<T, IdType>, IdType=string> extends IdentifiedByVal<T, IdType> {
+  private readonly _id:IdType
 
   constructor(id:IdType) {
     super()
     this._id = id
   }
 
-  id() { return this._id }
+  id():IdType {
+    return this._id
+  }
 }
 
-abstract class ContainerSlot<CS extends ContainerSlot<CS, S, T>, S extends SlotTyped<T, S>, T extends Identified<T, string>> extends IdentifiedVar<ContainerSlot<CS, S, T>> implements Iterable<S> {
+abstract class ContainerSlot<S extends SlotItems<T>, T extends IdentifiedByVal<T, string>> extends IdentifiedVar<ContainerSlot<S, T>> implements Iterable<S> {
   
   readonly secret:boolean
   private readonly slots:readonly S[] = []
-  private readonly construct:(string,ReadonlyArray,boolean) => CS
+  private readonly construct:(id:string,slots:readonly S[],secret:boolean) => this
   
   constructor(id:string, construct, slots, secret) {
     super(id)
@@ -157,7 +163,7 @@ abstract class ContainerSlot<CS extends ContainerSlot<CS, S, T>, S extends SlotT
     return this.slots[0]
   }
   
-  add(slots:S[]):CS {
+  add(slots:S[]):this {
     return this.construct(this.id(), this.slots.concat(slots), this.secret)
   }
 
@@ -167,7 +173,7 @@ abstract class ContainerSlot<CS extends ContainerSlot<CS, S, T>, S extends SlotT
     return slot!
   }
   
-  clear():CS {
+  clear():this {
     return this.construct(this.id(), [], this.secret)
   }
   
@@ -195,7 +201,7 @@ abstract class ContainerSlot<CS extends ContainerSlot<CS, S, T>, S extends SlotT
     return this.slots.map(s => [s, s.map(f)])
   }
 
-  update(update:UpdateSlot<S>):CS {
+  update(update:UpdateSlot<S>):this {
     const [slot, slot_] = update
 
     if (this.isId(slot_.idCnt)) {
@@ -211,7 +217,7 @@ abstract class ContainerSlot<CS extends ContainerSlot<CS, S, T>, S extends SlotT
         return this.construct(this.id(), this.slots.concat([slot_] as S[]), this.secret)
       }
     } else {
-      return this as unknown as CS
+      return this
     }
   }
   
@@ -221,18 +227,22 @@ abstract class ContainerSlot<CS extends ContainerSlot<CS, S, T>, S extends SlotT
 }
 
 // Note: id is only unique within a container
-interface Slot extends Identified<Slot, number> {
+interface Slot extends IdentifiedVar<Slot, number> {
   readonly idCnt:string
   isEmpty():boolean
   length():number
 }
 
-abstract class SlotTyped<T extends Identified<T>, S extends SlotTyped<T, S>> extends IdentifiedVar<SlotTyped<T, S>, number> implements Iterable<T>, Slot {
-  readonly idCnt:string
-  private readonly items:readonly T[]
-  private readonly construct:(number, string, ReadonlyArray) => S
+interface SlotItem extends Identified<SlotItem> {
+  serialize():any
+}
 
-  constructor(construct, id:number, idCnt:string, items:readonly T[]) {
+abstract class SlotItems<T extends SlotItem> extends IdentifiedVar<SlotItems<T>, number> implements Iterable<T>, Slot {
+  readonly idCnt:string
+  protected readonly items:readonly T[]
+  private readonly construct:(a:number, b:string, c:readonly T[]) => this
+
+  constructor(id:number, construct, idCnt:string, items:readonly T[]) {
     super(id)
     this.items = items
     this.idCnt = idCnt
@@ -243,7 +253,7 @@ abstract class SlotTyped<T extends Identified<T>, S extends SlotTyped<T, S>> ext
     return { ...super.serialize(), items: this.items.map(c => c.serialize()), idCnt: this.idCnt }
   }
   
-  add(items:T[], before?:T):S {
+  add(items:T[], before?:T):this {
     const idx = (() => {
       if (before) {
         const result = this.items.findIndex(i => i.is(before))
@@ -259,18 +269,18 @@ abstract class SlotTyped<T extends Identified<T>, S extends SlotTyped<T, S>> ext
     return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat(items).concat(this.items.slice(idx)))
   }
 
-  remove(items:T[]):S {
+  remove(items:T[]):this {
     if (items.length) {
       const idx = this.items.findIndex(i => i.is(items[0]))
       assert(() => idx != -1 && aryIdEquals(this.items.slice(idx, idx+1), items),
              "Sequence to be removed not found in slot")
       return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat(this.items.slice(idx+items.length)))
     } else {
-      return this as unknown as S
+      return this
     }
   }
 
-  replace(item:T, item_:T):S {
+  replace(item:T, item_:T):this {
     const idx = this.items.findIndex(i => i.is(item))
     assert(() => idx != -1, "Item to be replaced not found in slot")
     return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat([item_]).concat(this.items.slice(idx+1)))
@@ -298,11 +308,7 @@ abstract class SlotTyped<T extends Identified<T>, S extends SlotTyped<T, S>> ext
     return this.items.some(i => i.is(item))
   }
 
-  itemFindById(idItem:string):T|undefined {
-    return this.items.find(i => i.isId(idItem))
-  }
-  
-  map(f: (c: T) => T): S {
+  map(f: (c: T) => T):this {
     return this.construct(this.id(), this.idCnt, this.items.map(f))
   }
   
@@ -311,7 +317,7 @@ abstract class SlotTyped<T extends Identified<T>, S extends SlotTyped<T, S>> ext
   }
 }
 
-class ContainerSlotCards extends ContainerSlot<ContainerSlotCards, SlotCards, WorldCard> {
+class ContainerSlotCards extends ContainerSlot<SlotCards, WorldCard> {
   constructor(id:string, slots:readonly SlotCards[]=[], secret=false) {
     super(id, (id,slots,secret) => new ContainerSlotCards(id,slots,secret), slots, secret)
   }
@@ -321,9 +327,9 @@ class ContainerSlotCards extends ContainerSlot<ContainerSlotCards, SlotCards, Wo
   }
 }
 
-class SlotCards extends SlotTyped<WorldCard, SlotCards> {
+class SlotCards extends SlotItems<WorldCard> {
   constructor(id:number, idCnt:string, cards:WorldCard[] = []) {
-    super((id,idCnt,cards) => new SlotCards(id, idCnt, cards), id, idCnt, cards)
+    super(id, (id,idCnt,cards) => new SlotCards(id, idCnt, cards), idCnt, cards)
   }
 
   static fromSerialized(serialized:any) {
@@ -333,14 +339,17 @@ class SlotCards extends SlotTyped<WorldCard, SlotCards> {
   container(playfield:Playfield):ContainerSlotCards {
     return playfield.container(this.idCnt)
   }
+
+  findById(id:string):WorldCard|undefined {
+    return this.items.find(i => i.isId(id))
+  }
 }
 
-class Player {
-  readonly name:string
+class Player extends IdentifiedVar<Player> {
   readonly idSlots:string[]
   
-  constructor(name:string, idSlots:string[]) {
-    this.name = name
+  constructor(id:string, idSlots:string[]) {
+    super(id)
     this.idSlots = idSlots
   }
 }
@@ -993,7 +1002,7 @@ class Card extends IdentifiedVar<Card> {
   }
 }
 
-class WorldCard extends Identified<WorldCard, string> {
+class WorldCard extends IdentifiedByVal<WorldCard, string> {
   readonly card:Card
   readonly faceUp:boolean
   readonly faceUpIsConscious:boolean
@@ -1158,8 +1167,47 @@ class NotifierSlot {
   }
 }
 
+class Chip implements Identified<Chip> {
+  private readonly id:number
+  private readonly owner:Player
+  private readonly value:number
+  
+  constructor(owner:Player, id:number, value:number) {
+    this.id = id
+    this.value = value
+    this.owner = owner
+  }
+
+  is(rhs:Chip):boolean {
+    return this.id == rhs.id && this.owner.is(rhs.owner)
+  }
+
+  serialize(): any {
+    return { id: this.id, value: this.value }
+  }
+  
+  static fromSerialized(owner:Player, s:any) {
+    return new Chip(owner, s.id, s.value)
+  }
+}
+
+class SlotChips extends SlotItems<Chip> {
+  constructor(id:number, idCnt:string, chips:Chip[] = []) {
+    super(id, (id:number,idCnt:string,chips:Chip[]) => new SlotChips(id, idCnt, chips), idCnt, chips)
+  }
+
+  static fromSerialized(owner:Player, serialized:any) {
+    return new SlotCards(serialized.id, serialized.idCnt, serialized.cards.map(c => Chip.fromSerialized(owner,c)))
+  }
+
+  container(playfield:Playfield):ContainerSlotChips {
+    return playfield.containerChips(this.idCnt)
+  }
+}
+
 class Playfield {
   readonly containers:ContainerSlotCards[]
+  readonly containersChip:ContainerSlotChip[]
 
   constructor(containers:ContainerSlotCards[]) {
     this.containers = containers
@@ -1192,7 +1240,7 @@ class Playfield {
   
   wcard(id:string):WorldCard {
     for (const cnt of this.containers) {
-      const w = cnt.slotFindByItem(id)?.itemFindById(id)
+      const w = cnt.slotFindByItem(id)?.findById(id)
       if (w)
         return w
     }
@@ -1319,7 +1367,7 @@ class App {
     this.root.destroy()
     this.root = new UISlotRoot()
     this.game.makeUI(this, this.root)
-    demandElementById("player").innerText = this.viewer.name
+    demandElementById("player").innerText = this.viewer.id()
 
     for (const cnt of this.playfield.containers) {
       for (const slot of cnt) {
