@@ -478,7 +478,6 @@ abstract class UISlot extends UIActionable {
     else
       this.idSlot = idSlot
 
-    // Should be 'new EventTarget()', but iOS doesn't support that.
     this.app.notifierSlot.slot(this.idCnt, this.idSlot).addEventListener(
       "slotchange",
       (e:EventSlotChange) => 
@@ -655,7 +654,6 @@ abstract class UIContainerSlots extends UIActionable {
   constructor(element:HTMLElement, idCnt:string, app:App, owner:Player|null, viewer:Player) {
     super(element, idCnt, app, owner, viewer)
     
-    // Should be 'new EventTarget()', but iOS doesn't support that.
     this.app.notifierSlot.container(this.idCnt).addEventListener(
       "containerchange",
       (e:EventContainerChange<SlotCards>) => 
@@ -1141,6 +1139,7 @@ class NotifierSlot {
   container(idCnt:string) {
     let result = this.events.get(idCnt)
     if (!result) {
+      // Should be 'new EventTarget()', but iOS doesn't support that.
       result = document.createElement('div')
       this.events.set(idCnt, result)
     }
@@ -1151,6 +1150,7 @@ class NotifierSlot {
     const key = idCnt + "-" + idSlot
     let result = this.events.get(key)
     if (!result) {
+      // Should be 'new EventTarget()', but iOS doesn't support that.
       result = document.createElement('div')
       this.events.set(key, result)
     }
