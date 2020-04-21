@@ -12,7 +12,7 @@ function aryEquals(lhs:any[], rhs:any[]) {
   return true
 }
 
-function aryIdEquals<T extends Identified<T>>(lhs:T[], rhs:T[]) {
+function aryIdEquals<T extends Identified>(lhs:T[], rhs:T[]) {
   if (lhs.length != rhs.length)
     return false
 
@@ -108,14 +108,14 @@ class EventListeners {
   }
 }
 
-interface Identified<T> {
-  is(rhs:T):boolean
+interface Identified {
+  is(rhs:this):boolean
 }
 
-abstract class IdentifiedByVal<T extends IdentifiedByVal<T, IdType>, IdType> implements Identified<T> {
+abstract class IdentifiedByVal<IdType> implements Identified {
   abstract id():IdType
   
-  is(rhs:T):boolean {
+  is(rhs:this):boolean {
     return this.isId(rhs.id())
   }
   
@@ -128,7 +128,7 @@ abstract class IdentifiedByVal<T extends IdentifiedByVal<T, IdType>, IdType> imp
   }
 }
 
-abstract class IdentifiedVar<T extends IdentifiedVar<T, IdType>, IdType=string> extends IdentifiedByVal<T, IdType> {
+abstract class IdentifiedVar<IdType=string> extends IdentifiedByVal<IdType> {
   private readonly _id:IdType
 
   constructor(id:IdType) {
@@ -141,7 +141,7 @@ abstract class IdentifiedVar<T extends IdentifiedVar<T, IdType>, IdType=string> 
   }
 }
 
-abstract class ContainerSlot<S extends SlotItems<T>, T extends IdentifiedByVal<T, string>> extends IdentifiedVar<ContainerSlot<S, T>> implements Iterable<S> {
+abstract class ContainerSlot<S extends SlotItems<T>, T extends SlotItem> extends IdentifiedVar implements Iterable<S> {
   
   readonly secret:boolean
   private readonly slots:readonly S[] = []
@@ -227,17 +227,17 @@ abstract class ContainerSlot<S extends SlotItems<T>, T extends IdentifiedByVal<T
 }
 
 // Note: id is only unique within a container
-interface Slot extends IdentifiedVar<Slot, number> {
+interface Slot extends IdentifiedVar<number> {
   readonly idCnt:string
   isEmpty():boolean
   length():number
 }
 
-interface SlotItem extends Identified<SlotItem> {
+interface SlotItem extends Identified {
   serialize():any
 }
 
-abstract class SlotItems<T extends SlotItem> extends IdentifiedVar<SlotItems<T>, number> implements Iterable<T>, Slot {
+abstract class SlotItems<T extends SlotItem> extends IdentifiedVar<number> implements Iterable<T>, Slot {
   readonly idCnt:string
   protected readonly items:readonly T[]
   private readonly construct:(a:number, b:string, c:readonly T[]) => this
@@ -345,7 +345,7 @@ class SlotCards extends SlotItems<WorldCard> {
   }
 }
 
-class Player extends IdentifiedVar<Player> {
+class Player extends IdentifiedVar {
   readonly idSlots:string[]
   
   constructor(id:string, idSlots:string[]) {
@@ -972,7 +972,7 @@ enum Color {
   RED=1
 }
 
-class Card extends IdentifiedVar<Card> {
+class Card extends IdentifiedVar {
   readonly suit:number
   readonly rank:number
     
@@ -1002,7 +1002,7 @@ class Card extends IdentifiedVar<Card> {
   }
 }
 
-class WorldCard extends IdentifiedByVal<WorldCard, string> {
+class WorldCard extends IdentifiedByVal<string> {
   readonly card:Card
   readonly faceUp:boolean
   readonly faceUpIsConscious:boolean
@@ -1167,7 +1167,7 @@ class NotifierSlot {
   }
 }
 
-class Chip implements Identified<Chip> {
+class Chip implements Identified {
   private readonly id:number
   private readonly owner:Player
   private readonly value:number
@@ -1478,7 +1478,7 @@ function revealAll(app:App) {
 
 declare var Peer
 
-class PeerPlayer extends IdentifiedVar<PeerPlayer> {
+class PeerPlayer extends IdentifiedVar {
   private conn:any
   private readonly conns:Connections
   
@@ -1693,7 +1693,7 @@ class Connections {
   }
 }
 
-abstract class Game extends IdentifiedVar<Game> {
+abstract class Game extends IdentifiedVar {
   readonly description:string
 
   constructor(id:string, description:string) {
