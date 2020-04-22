@@ -2,7 +2,7 @@ CORDOVA = node_modules/.bin/cordova
 TYPESCRIPT = node_modules/.bin/tsc
 SASS = sass
 
-SRC = ts/cards.ts
+SRC = ts/app.ts ts/assert.ts ts/dom.ts ts/game.ts ts/ui.ts
 
 .PHONY: clean serve build run run-emu cordova cordova-prepare browser 
 
@@ -27,7 +27,7 @@ www/css :
 	mkdir -p $@
 
 www/js/app.js : $(SRC)
-	"$(TYPESCRIPT)" --noEmitOnError --alwaysStrict --strictNullChecks --target es2019 --outFile $@ $<
+	"$(TYPESCRIPT)" --noEmitOnError --alwaysStrict --strictNullChecks --target es2019 --module system --outFile $@ ts/app.ts
 
 www/css/app.css : sass/app.scss
 	"$(SASS)" $<:$@
