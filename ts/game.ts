@@ -243,7 +243,7 @@ export class SlotCard extends SlotItem<WorldCard> {
   }
 }
 
-class ContainerSlotCard extends ContainerSlot<SlotCard, WorldCard> {
+export class ContainerSlotCard extends ContainerSlot<SlotCard, WorldCard> {
   constructor(id:string, slots:readonly SlotCard[]=[], secret=false) {
     super(id, (id,slots,secret) => new ContainerSlotCard(id,slots,secret), slots, secret)
   }
@@ -449,7 +449,7 @@ function newEventTarget() {
   return document.createElement('div')
 }
 
-type FuncSlotUpdatePre = (updates:UpdateSlot<SlotCard>[]) => ResultPreSlotUpdate
+type FuncSlotUpdatePre = (updates:UpdateSlot<SlotCard>[], localAction:boolean) => ResultPreSlotUpdate
 type FuncSlotUpdatePost = (result:ResultPreSlotUpdate, localAction:boolean) => void
 type ResultPreSlotUpdate = [FuncSlotUpdatePost, any]
 
@@ -480,8 +480,8 @@ export class NotifierSlot {
     this.slotUpdates.push([funcPre, funcPost])
   }
   
-  preSlotUpdate(updates:UpdateSlot<SlotCard>[]):ResultPreSlotUpdate[] {
-    return this.slotUpdates.map(([pre, post]) => [post, pre(updates)])
+  preSlotUpdate(updates:UpdateSlot<SlotCard>[], localAction:boolean):ResultPreSlotUpdate[] {
+    return this.slotUpdates.map(([pre, post]) => [post, pre(updates, localAction)])
   }
 
   postSlotUpdate(results:ResultPreSlotUpdate[], localAction:boolean) {
@@ -587,12 +587,8 @@ export class Playfield {
     throw new Error(`Card ${id} is not in any slot`)
   }
   
-  slotsUpdate(updates:UpdateSlot<SlotCard>[], connections:Connections, notifierSlot:NotifierSlot, send=true):Playfield {
+  slotsUpdate(updates:UpdateSlot<SlotCard>[], notifierSlot:NotifierSlot, send=true):Playfield {
     assert(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
-    
-    if (send) {
-      connections.broadcast({slotUpdates: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
-    }
     
     let containers_ = this.containers
     for (let update of updates) {
@@ -600,7 +596,7 @@ export class Playfield {
     }
     const playfield_ = new Playfield(containers_)
 
-    const preSlotChangeInfo = notifierSlot.preSlotUpdate(updates)
+    const preSlotChangeInfo = notifierSlot.preSlotUpdate(updates, send)
     
     const cntChanged:Map<string, UpdateSlot<SlotCard>[]> = new Map()
     for (const update of updates) {
