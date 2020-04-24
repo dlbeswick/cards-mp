@@ -9,7 +9,7 @@ SRC = ts/app.ts ts/assert.ts ts/dom.ts ts/game.ts ts/ui.ts
 www/js/peerjs.min.js: node_modules/peerjs/dist/peerjs.min.js
 	cp $< $@
 
-build: www/css/app.css www/js/app.js www/js/peerjs.min.js | www/js www/css
+build: www/js www/css www/css/app.css www/js/*.js www/js/peerjs.min.js 
 
 browser: build
 	"$(CORDOVA)" build browser
@@ -26,8 +26,8 @@ www/js :
 www/css :
 	mkdir -p $@
 
-www/js/app.js : $(SRC)
-	"$(TYPESCRIPT)" --noEmitOnError --alwaysStrict --strictNullChecks --target es2019 --module system --outFile $@ ts/app.ts
+www/js/%.js: ts/*.ts
+	"$(TYPESCRIPT)" --noEmitOnError --strict --target es2019 --module es2015 --outDir www/js $(SRC)
 
 www/css/app.css : sass/app.scss
 	"$(SASS)" $<:$@

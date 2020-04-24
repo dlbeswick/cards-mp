@@ -1,10 +1,10 @@
-import assert from "./assert"
-import * as dom from "./dom"
+import assert from "./assert.js"
+import * as dom from "./dom.js"
 import { Card, ContainerSlotCard, EventContainerChange, EventSlotChange, NotifierSlot, Player, Playfield, SlotCard,
-         UpdateSlot, WorldCard } from './game'
-import { Vector } from './math'
+         UpdateSlot, WorldCard } from './game.js'
+import { Vector } from './math.js'
 
-type RefEventListener = [string, (e:Event) => boolean]
+type RefEventListener = [string, (e:any) => boolean]
 
 class EventListeners {
   private refs:RefEventListener[] = []
@@ -14,7 +14,7 @@ class EventListeners {
     this.target = e
   }
   
-  add(typeEvent:string, handler:(e:Event) => boolean):RefEventListener {
+  add<T extends Event>(typeEvent:string, handler:(e:T) => boolean):RefEventListener {
     const ref:RefEventListener = [typeEvent, EventListeners.preventDefaultWrapper.bind(undefined, handler)]
     this.refs.push(ref)
     this.target.addEventListener(typeEvent, ref[1])
@@ -34,7 +34,7 @@ class EventListeners {
     this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
   }
   
-  private static preventDefaultWrapper(func:(e:Event) => boolean, e:Event) {
+  private static preventDefaultWrapper<T extends Event>(func:(e:T) => boolean, e:T) {
     if (!func(e)) {
       e.preventDefault()
       e.stopPropagation()
@@ -136,7 +136,7 @@ abstract class UIActionable extends UIElement {
   }
 
   abstract uicardsForCards(cards:Card[]):UICard[]
-  protected abstract onAction(selected:UICard[]):void
+  protected abstract onAction(selected:readonly UICard[]):void
 
   container():ContainerSlotCard {
     return this.playfield.container(this.idCnt)
@@ -147,7 +147,7 @@ abstract class UIActionable extends UIElement {
   }
   
   onClick(e:MouseEvent) {
-    this.selection.finalize(this.onAction.bind(this))
+    this.selection.finalize(this.onAction.bind(this), UICard)
     return true
   }
 }
@@ -158,10 +158,10 @@ abstract class UIActionable extends UIElement {
 abstract class UISlot extends UIActionable {
   idSlot:number
   readonly actionLongPress:string
-  private selectionMode:string
+  private readonly selectionMode:string
   protected children:UICard[] = []
-  protected urlCards:string
-  protected urlCardBack:string
+  protected readonly urlCards:string
+  protected readonly urlCardBack:string
   
   constructor(element:HTMLElement, idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
               playfield:Playfield, idSlot:number, notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string,
@@ -169,13 +169,14 @@ abstract class UISlot extends UIActionable {
 
     super(element, idCnt, selection, owner, viewer, playfield, notifierSlot)
     
-    this.element.classList.add("slot")
-    
     this.actionLongPress = actionLongPress
     this.selectionMode = selectionMode
-    
     this.idSlot = idSlot
+    this.urlCards = urlCards
+    this.urlCardBack = urlCardBack
 
+    this.element.classList.add("slot")
+    
     notifierSlot.slot(this.idCnt, this.idSlot).addEventListener(
       "slotchange",
       (e:EventSlotChange) => 
@@ -210,7 +211,7 @@ abstract class UISlot extends UIActionable {
   protected doMove(uiCards:UICard[]) {
     const cardsSrc = uiCards.map(ui => ui.wcard)
     assert(() => cardsSrc.length)
-    const slotSrc = this.playfield.slotForCard(cardsSrc[0])
+    const slotSrc = uiCards[0].uislot.slot()
     const slotDst = this.slot()
     if (slotSrc === slotDst) {
       // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
@@ -246,8 +247,8 @@ export class UISlotSingle extends UISlot {
   readonly count:HTMLElement
   private readonly height:string
   private cards:HTMLElement
-  private readonly cardWidth
-  private readonly cardHeight
+  private readonly cardWidth:number
+  private readonly cardHeight:number
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield, height:string,
               idSlot:number, notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, cardWidth:number,
@@ -286,7 +287,7 @@ export class UISlotSingle extends UISlot {
     this.count.innerText = slot_.length().toString()
   }
 
-  private makeCardsDiv(height):HTMLElement {
+  private makeCardsDiv(height:string):HTMLElement {
     const result = document.createElement("div")
     result.style.minHeight = height
     return result
@@ -408,7 +409,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
   onAction(selected:UICard[]) {
     assert(() => selected.length)
     const cardsSrc = selected.map(ui => ui.wcard)
-    const slotSrc = this.playfield.slotForCard(cardsSrc[0])
+    const slotSrc = selected[0].uislot.slot()
     const slotSrc_ = slotSrc.remove(cardsSrc)
     const cnt:ContainerSlotCard = this.container()
     const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id(), cardsSrc)
@@ -473,6 +474,8 @@ export class UICard extends UIElement implements Selectable {
     this.dropTarget = dropTarget
     this.wcard = wcard
     this.uislot = uislot
+    this.notifierSlot = notifierSlot
+    this.playfield = playfield
     this.element.classList.add(...classesCard)
     this.faceUp = wcard.faceUp && (this.uislot.isViewableBy(viewer) || wcard.faceUpIsConscious)
 
@@ -495,15 +498,15 @@ export class UICard extends UIElement implements Selectable {
     this.eventsImg = new EventListeners(svg)
     this.element.appendChild(svg)
     
-    function lpMouseUp(self, e) {
+    function lpMouseUp(self:UICard) {
       if (self.timerPress) {
-        cancel(self, e)
+        cancel(self)
         self.onClick()
       }
       return false
     }
     
-    function lpMouseDown(self, e) {
+    function lpMouseDown(self:UICard) {
       self.timerPress = window.setTimeout(
         () => {
           self.timerPress = null
@@ -513,7 +516,7 @@ export class UICard extends UIElement implements Selectable {
       return false
     }
     
-    function cancel(self, e) {
+    function cancel(self:UICard) {
       self.touch = undefined
       if (self.timerPress) {
         clearTimeout(self.timerPress)
@@ -524,18 +527,18 @@ export class UICard extends UIElement implements Selectable {
 
     // Touch events here must both allow longpress and not block scrolling. "touchstart" return true, so further
     // mouse events can't be blocked by the browser and this code must ignore them where required.
-    this.eventsImg.add("mouseup", (e) => !this.touch ? lpMouseUp(this, e) : true)
-    this.eventsImg.add("mousedown", (e) => !this.touch ? lpMouseDown(this, e) : true)
-    this.eventsImg.add("mouseout", (e) => cancel(this, e))
+    this.eventsImg.add("mouseup", () => !this.touch ? lpMouseUp(this) : true)
+    this.eventsImg.add("mousedown", () => !this.touch ? lpMouseDown(this) : true)
+    this.eventsImg.add("mouseout", () => cancel(this))
     this.eventsImg.add("touchstart",
-                       (e:TouchEvent) => { this.touch = e.touches[0]; lpMouseDown(this, e); return true })
+                       (e:TouchEvent) => { this.touch = e.touches[0]; lpMouseDown(this); return true })
     this.eventsImg.add("touchmove", (e:TouchEvent) => {
       if (!this.touch || Math.abs(e.touches[0].screenY - this.touch.screenY) > 5)
-        cancel(this, e)
+        cancel(this)
       return true
     })
-    this.eventsImg.add("touchcancel", (e) => cancel(this, e))
-    this.eventsImg.add("touchend", (e) => this.touch ? lpMouseUp(this, e) : false)
+    this.eventsImg.add("touchcancel", () => cancel(this))
+    this.eventsImg.add("touchend", () => this.touch ? lpMouseUp(this) : false)
 
     // Stop slots acting on mouse events that this element has acted on.
     this.eventsImg.add("click",
@@ -638,7 +641,7 @@ export class UICard extends UIElement implements Selectable {
   private onClick() {
     // This logic is necessary to allow non-drop targets (single slot) to have this action fall through to the slot.
     if (this.dropTarget && this.selection.active() && !this.selection.includes(this)) {
-      this.selection.finalize(this.doMove.bind(this))
+      this.selection.finalize(this.doMove.bind(this), UICard)
     } else if (this.selection.active() && this.selection.includes(this)) {
       this.selection.deselect()
     } else if (!this.selection.active()) {
@@ -658,10 +661,10 @@ export class UICard extends UIElement implements Selectable {
     this.playfield.slotsUpdate([[slot, slot_]], this.notifierSlot)
   }
   
-  private doMove(uicards:UICard[]) {
+  private doMove(uicards:readonly UICard[]) {
     assert(() => uicards.length)
     const cardsSrc = uicards.map(ui => ui.wcard)
-    const slotSrc = this.playfield.slotForCard(cardsSrc[0])
+    const slotSrc = uicards[0].uislot.slot()
     const slotDst = this.uislot.slot()
 
     if (slotSrc === slotDst) {
@@ -676,8 +679,8 @@ export class UICard extends UIElement implements Selectable {
 }
 
 export interface Selectable {
-  onSelect()
-  onDeselect()
+  onSelect():void
+  onDeselect():void
 }
 
 export class Selection {
@@ -697,9 +700,10 @@ export class Selection {
     this.selected = this.selected.filter(s => !selects.includes(s))
   }
 
-  finalize(func:(selected:readonly Selectable[]) => void) {
+  finalize<T extends Selectable>(func:(selected:readonly T[]) => void, klass:new (...args:any) => T) {
+    assert(() => this.selected.every(s => s instanceof klass))
     if (this.selected.length > 0)
-      func(this.selected)
+      func(this.selected as T[])
     this.deselect(this.selected)
   }
 

@@ -1,12 +1,12 @@
-import assert from "./assert"
-import * as dom from "./dom"
+import assert from "./assert.js"
+import * as dom from "./dom.js"
 import {
   Connections, EventContainerChange, EventPeerUpdate, EventSlotChange, Game, GameGinRummy, GameDummy, GamePoker,
   NotifierSlot, PeerPlayer, Player, Playfield, SlotCard, UpdateSlot
-} from "./game"
-import errorHandler from "./error_handler"
-import { Vector } from "./math"
-import { Selection, UICard, UIContainerFlex, UIContainerSlotsMulti, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui"
+} from "./game.js"
+import errorHandler from "./error_handler.js"
+import { Vector } from "./math.js"
+import { Selection, UICard, UIContainerFlex, UIContainerSlotsMulti, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
 window.onerror = errorHandler
 
@@ -35,7 +35,7 @@ document.addEventListener("deviceready", () => {
 })
 
 class App {
-  readonly selection:Selection
+  readonly selection:Selection = new Selection()
   readonly notifierSlot:NotifierSlot
   readonly urlCards:string
   readonly urlCardBack:string
@@ -236,7 +236,7 @@ class App {
       let updates:UpdateSlot<SlotCard>[]
       let slots:SlotCard[]
       
-      updates = data.slotUpdates.map(
+      updates = (data.slotUpdates as UpdateSlot<SlotCard>[]).map(
         ([s,s_]) => {
           if (s)
             return [SlotCard.fromSerialized(s), SlotCard.fromSerialized(s_)]
@@ -454,39 +454,7 @@ function run(urlCards:string, urlCardBack:string) {
         if (metadata != 'reconnect')
             app.sync(peerId) // tbd: check playfield sequence # and only sync if necessary
       },
-      (data:any, registrant:any, peer:PeerPlayer) => {
-        console.log('Received', data)
-
-        if (data.chern) {
-          for (const id of data.chern.idPeers)
-            if (id != registrant.id)
-              registrant.connect(id)
-        } else if (data.ping) {
-          //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping.secs))
-          peer.send({ping_back: {secs: data.ping.secs}})
-        } else if (data.ping_back) {
-          //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
-        } else if (data.sync) {
-          app.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
-        } else if (data.askSync) {
-          app.sync(peer.id())
-        } else if (data.slotUpdates) {
-          let updates:UpdateSlot<SlotCard>[]
-          let slots:SlotCard[]
-          
-          updates = data.slotUpdates.map(
-            ([s,s_]) => {
-              if (s)
-                return [SlotCard.fromSerialized(s), SlotCard.fromSerialized(s_)]
-              else
-                return [undefined, SlotCard.fromSerialized(s_)]
-            })
-          
-          this.playfield = this.playfield.slotsUpdate(updates, app.connections, app.notifierSlot, false)
-        } else {
-          console.debug("Unknown message", data)
-        }
-      }
+      app.onReceiveData.bind(app)
     )
   })
   dom.demandById("connect").addEventListener("click", () => {

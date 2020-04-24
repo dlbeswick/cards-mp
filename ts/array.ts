@@ -1,4 +1,4 @@
-import assert from './assert'
+import assert from './assert.js'
 
 export function equals(lhs:any[], rhs:any[]) {
   if (lhs.length != rhs.length)

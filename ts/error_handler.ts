@@ -1,6 +1,6 @@
-import * as dom from "./dom"
+import * as dom from "./dom.js"
 
-export default function errorHandler(message, source?, lineno?, colno?, error?, showAlert=true) {
+export default function errorHandler(message:any, source?:any, lineno?:any, colno?:any, error?:any, showAlert=true) {
   if (showAlert)
     alert(message)
   dom.demandById("error").style.display = "block"

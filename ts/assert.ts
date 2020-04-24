@@ -1,6 +1,6 @@
-import errorHandler from "./error_handler"
+import errorHandler from "./error_handler.js"
 
-export default function assert(test:() => any, message='', ...args) {
+export default function assert(test:() => any, message='', ...args:any) {
   if (!test()) {
     message = test.toString() + ", " + message
     for (let arg of args) {

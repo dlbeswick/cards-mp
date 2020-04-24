@@ -1,4 +1,4 @@
-export function withElement<T extends HTMLElement>(id:string, klass:new() => T, func:(T) => void) {
+export function withElement<T extends HTMLElement>(id:string, klass:new() => T, func:(t:T) => void) {
   func(demandById(id, klass))
 }
 
