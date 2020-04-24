@@ -4,7 +4,7 @@ import { Card, ContainerSlotCard, EventContainerChange, EventSlotChange, Notifie
          UpdateSlot, WorldCard } from './game.js'
 import { Vector } from './math.js'
 
-type RefEventListener = [string, (e:any) => boolean]
+type RefEventListener = [string, (e:Event) => void]
 
 class EventListeners {
   private refs:RefEventListener[] = []
@@ -34,7 +34,7 @@ class EventListeners {
     this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
   }
   
-  private static preventDefaultWrapper<T extends Event>(func:(e:T) => boolean, e:T) {
+  private static preventDefaultWrapper<T extends Event>(this:undefined, func:(e:T) => boolean, e:T):void {
     if (!func(e)) {
       e.preventDefault()
       e.stopPropagation()
@@ -365,7 +365,7 @@ abstract class UIContainerSlots extends UIActionable {
               playfield:Playfield, notifierSlot:NotifierSlot) {
     super(element, idCnt, selection, owner, viewer, playfield, notifierSlot)
     
-    this.notifierSlot.container(this.idCnt).addEventListener(
+    this.notifierSlot.container(this.idCnt).addEventListener<SlotCard>(
       "containerchange",
       (e:EventContainerChange<SlotCard>) => 
         this.change(e.playfield_, e.playfield.container(e.idCnt), e.playfield_.container(e.idCnt), e.updates)

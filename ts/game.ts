@@ -441,9 +441,19 @@ export class EventPeerUpdate extends Event {
   }
 }
 
+interface EventMapNotifierSlot<S extends Slot> {
+  "slotchange": EventSlotChange,
+  "containerchange": EventContainerChange<S>
+}
+
+interface EventTargetNotifierSlot {
+  addEventListener<S extends Slot, K extends keyof EventMapNotifierSlot<S>=keyof EventMapNotifierSlot<S>>(type: K, listener: (ev: EventMapNotifierSlot<S>[K]) => any): void
+  dispatchEvent(event:Event):boolean
+}
+
 function newEventTarget() {
   // Should be 'new EventTarget()', but iOS doesn't support that.
-  return document.createElement('div')
+  return document.createElement('div') as EventTargetNotifierSlot
 }
 
 type FuncSlotUpdatePre = (updates:UpdateSlot<SlotCard>[], localAction:boolean) => ResultPreSlotUpdate
@@ -451,7 +461,7 @@ type FuncSlotUpdatePost = (result:ResultPreSlotUpdate, localAction:boolean) => v
 type ResultPreSlotUpdate = [FuncSlotUpdatePost, any]
 
 export class NotifierSlot {
-  private readonly events:Map<string, EventTarget> = new Map()
+  private readonly events:Map<string, EventTargetNotifierSlot> = new Map()
   private readonly slotUpdates:[FuncSlotUpdatePre, FuncSlotUpdatePost][] = []
 
   container(idCnt:string) {
@@ -661,8 +671,9 @@ interface EventMapConnections {
   "peerupdate": EventPeerUpdate
 }
 
-interface EventTargetConnections extends EventTarget {
-    addEventListener<K extends keyof EventMapConnections>(type: K, listener: (ev: EventMapConnections[K]) => any): void;
+interface EventTargetConnections {
+  addEventListener<K extends keyof EventMapConnections>(type: K, listener: (ev: EventMapConnections[K]) => any): void
+  dispatchEvent(event:EventPeerUpdate):void
 }
 
 export class Connections {
