@@ -1,7 +1,6 @@
-import assert from "./assert.js"
+import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
-import { Card, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventSlotChange, NotifierSlot, Player, Playfield, SlotCard,
-         UpdateSlot, WorldCard } from './game.js'
+import { Card, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventSlotChange, NotifierSlot, Player, Playfield, SlotCard, UpdateSlot, WorldCard } from './game.js'
 import { Vector } from './math.js'
 
 type RefEventListener = [string, (e:Event) => void]
@@ -30,7 +29,7 @@ class EventListeners {
 
   remove(ref:RefEventListener) {
     const idx = this.refs.indexOf(ref)
-    assert(() => idx != -1)
+    assert(idx != -1)
     this.target.removeEventListener(...ref)
     this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
   }
@@ -78,8 +77,8 @@ abstract class UIContainer extends UIElement {
   //
   // For example, the "single slot" view of stock may logically contain the card but a UICard will only have been
   // created for the top card.
-  uicardsForCards(cards:Card[]):UICard[] {
-    return this.children.flatMap(c => c.uicardsForCards(cards))
+  uiMovablesForSlots(slots:SlotCard[]):UIMovable[] {
+    return this.children.flatMap(c => c.uiMovablesForSlots(slots))
   }
 
   destroy() {
@@ -136,8 +135,8 @@ abstract class UIActionable extends UIElement {
     this.events.add("click", this.onClick.bind(this))
   }
 
-  abstract uicardsForCards(cards:Card[]):UICard[]
-  protected abstract onAction(selected:readonly UICard[]):void
+  abstract uiMovablesForSlots(slots:SlotCard[]):UIMovable[]
+  protected abstract onAction(selected:readonly UIMovable[]):void
 
   container():ContainerSlotCard {
     return this.playfield.container(this.idCnt)
@@ -211,7 +210,7 @@ abstract class UISlot extends UIActionable {
   
   protected doMove(uiCards:UICard[]) {
     const cardsSrc = uiCards.map(ui => ui.wcard)
-    assert(() => cardsSrc.length)
+    assert(cardsSrc.length, "Source cards empty")
     const slotSrc = uiCards[0].uislot.slot()
     const slotDst = this.slot()
     if (slotSrc === slotDst) {
@@ -268,11 +267,8 @@ export class UISlotSingle extends UISlot {
     this.cardHeight = cardHeight
   }
 
-  uicardsForCards(cards:Card[]):UICard[] {
-    if (cards.some(c => this.children[0]?.wcard.card.is(c)))
-      return [this.children[0]]
-    else
-      return []
+  uiMovablesForSlots(slots:SlotCard[]):UIMovable[] {
+    return Array.from(slots).some(s => this.slot().is(s)) ? [this.children[0]] : []
   }
   
   change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void {
@@ -281,6 +277,7 @@ export class UISlotSingle extends UISlot {
     if (!slot_.isEmpty()) {
       this.children[0] = new UICard(slot_.top(), this, false, this.viewer, this.selection, this.playfield,
                                     this.notifierSlot, this.urlCards, this.urlCardBack, this.cardWidth, this.cardHeight)
+      this.children[0].init()
       cards.appendChild(this.children[0].element)
     }
     this.cards.replaceWith(cards)
@@ -325,8 +322,8 @@ export class UISlotSpread extends UISlot {
     this.cardHeight = cardHeight
   }
 
-  uicardsForCards(cards:Card[]):UICard[] {
-    return this.children.filter(uicard => cards.some(card => uicard.wcard.card.is(card)))
+  uiMovablesForSlots(slots:SlotCard[]):UIMovable[] {
+    return slots.some(s => this.slot().is(s)) ? this.children : []
   }
   
   change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void {
@@ -346,6 +343,7 @@ export class UISlotSpread extends UISlot {
       if (!child || !child.wcard.equals(wcard)) {
         const uicard = new UICard(wcard, this, true, this.viewer, this.selection, this.playfield, this.notifierSlot,
                                   this.urlCards, this.urlCardBack, this.cardWidth, this.cardHeight, this.classesCard)
+        uicard.init()
         uicard.element.style.zIndex = (idx+1).toString() // Keep it +1 just in case transitions ever need to avoid
                                                          // overlaying the same card (then they can -1).
         this.children[idx] = uicard
@@ -405,12 +403,12 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     this.cardHeight = cardHeight
   }
 
-  uicardsForCards(cards:Card[]):UICard[] {
-    return this.children.flatMap(c => c.uicardsForCards(cards))
+  uiMovablesForSlots(slots:SlotCard[]):UIMovable[] {
+    return this.children.flatMap(uis => uis.uiMovablesForSlots(slots))
   }
   
   onAction(selected:UICard[]) {
-    assert(() => selected.length)
+    assert(selected.length, "Empty selection")
     const cardsSrc = selected.map(ui => ui.wcard)
     const slotSrc = selected[0].uislot.slot()
     const slotSrc_ = slotSrc.remove(cardsSrc)
@@ -422,7 +420,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
   
   change(playfield_:Playfield, cnt:ContainerSlotCard, cnt_:ContainerSlotCard, updates:UpdateSlot<SlotCard>[]):void {
     // Deletes not handled for now
-    assert(() => Array.from(cnt).every(c => Array.from(cnt_).some(c_ => c.is(c_))))
+    assert(Array.from(cnt).every(c => Array.from(cnt_).some(c_ => c.is(c_))), "Some slots not in multi")
 
     for (const [slot, slot_] of updates) {
       if (!this.children.some(uislot => slot_.isId(uislot.idSlot))) {
@@ -456,54 +454,30 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
   }
 }
 
-/*
-  Assumptions: 1->1 UICard->Card on given Playfield
-*/
-export class UICard extends UIElement implements Selectable {
-  readonly wcard:WorldCard
-  readonly uislot:UISlot
-  private readonly faceUp:boolean
+export abstract class UIMovable extends UIElement {
+  protected readonly selection:Selection
+  protected readonly dropTarget:boolean
+  private eventsImg?:EventListeners
   private timerPress:number|null = null
-  private readonly dropTarget:boolean
-  private readonly eventsImg:EventListeners
   private touch?:Touch
-  private selection:Selection
-  private playfield:Playfield
-  private notifierSlot:NotifierSlot
-  
-  constructor(wcard:WorldCard, uislot:UISlot, dropTarget:boolean, viewer:Player, selection:Selection,
-              playfield:Playfield, notifierSlot:NotifierSlot, urlCardImages:string, urlCardBack:string,
-              cardWidth:number, cardHeight:number, classesCard=["card"]) {
-    super(document.createElement("div"))
+
+  constructor(el:HTMLElement, selection:Selection, dropTarget:boolean) {
+    super(el)
     this.selection = selection
     this.dropTarget = dropTarget
-    this.wcard = wcard
-    this.uislot = uislot
-    this.notifierSlot = notifierSlot
-    this.playfield = playfield
-    this.element.classList.add(...classesCard)
-    this.faceUp = wcard.faceUp && (this.uislot.isViewableBy(viewer) || wcard.faceUpIsConscious)
+  }
+  
+  abstract equalsVisually(rhs:this):boolean
+  abstract is(rhs:this):boolean
+  protected abstract doMove(uimovable:readonly this[]):void
+  
+  protected init(elementClickable:EventTarget):void {
+    // Adding events to a small-width div (as with cards) works fine on Chrome and FF, but iOS ignores clicks on the
+    // image if it extends past the div borders. Or perhaps it's firing pointerups? That's why a specific events target
+    // on the actual clickable is needed.
+    this.eventsImg = new EventListeners(elementClickable)
 
-    const svg = document.createElement("img")
-    if (this.faceUp) {
-      svg.setAttribute('src', urlCardImages + '#c' + wcard.card.suit + '_' + wcard.card.rank)
-    } else {
-      svg.setAttribute('src', urlCardBack)
-    }
-
-    if (wcard.turned) {
-      this.element.classList.add('turned')
-    }
-    
-    svg.setAttribute('width', cardWidth.toString())
-    svg.setAttribute('height', cardHeight.toString())
-
-    // Adding events to a small-width div works fine on Chrome and FF, but iOS ignores clicks on the image if it
-    // extends past the div borders. Or perhaps it's firing pointerups?
-    this.eventsImg = new EventListeners(svg)
-    this.element.appendChild(svg)
-    
-    function lpMouseUp(self:UICard) {
+    function lpMouseUp(self:UIMovable) {
       if (self.timerPress) {
         cancel(self)
         self.onClick()
@@ -511,7 +485,7 @@ export class UICard extends UIElement implements Selectable {
       return false
     }
     
-    function lpMouseDown(self:UICard) {
+    function lpMouseDown(self:UIMovable) {
       self.timerPress = window.setTimeout(
         () => {
           self.timerPress = null
@@ -521,7 +495,7 @@ export class UICard extends UIElement implements Selectable {
       return false
     }
     
-    function cancel(self:UICard) {
+    function cancel(self:UIMovable) {
       self.touch = undefined
       if (self.timerPress) {
         clearTimeout(self.timerPress)
@@ -530,6 +504,8 @@ export class UICard extends UIElement implements Selectable {
       return false
     }
 
+    assert(this.eventsImg, "Failed to call init")
+    
     // Touch events here must both allow longpress and not block scrolling. "touchstart" return true, so further
     // mouse events can't be blocked by the browser and this code must ignore them where required.
     this.eventsImg.add("mouseup", () => !this.touch ? lpMouseUp(this) : true)
@@ -553,22 +529,9 @@ export class UICard extends UIElement implements Selectable {
     this.eventsImg.add("contextmenu", (e) => false)
   }
 
-  equals(rhs:UICard) {
-    return this.wcard.card.is(rhs.wcard.card) && this.faceUp == rhs.faceUp
-  }
-  
   destroy() {
     super.destroy()
-    this.eventsImg.removeAll()
-  }
-  
-  detach() {
-    this.element.parentNode?.removeChild(this.element)
-  }
-  
-  attach(parent:HTMLElement) {
-    console.assert(() => !this.element.parentNode)
-    parent.appendChild(this.element)
+    this.eventsImg?.removeAll()
   }
 
   onSelect() {
@@ -579,11 +542,6 @@ export class UICard extends UIElement implements Selectable {
     this.element.classList.remove("selected")
   }
 
-  coordsAbsolute():Vector {
-    const rectThis = this.element.getBoundingClientRect()
-    return [rectThis.left + window.pageXOffset, rectThis.top + window.pageYOffset]
-  }
-  
   fadeTo(start:string, end:string, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
     if (this.element.animate) {
       const filter = this.element.style.filter
@@ -609,7 +567,7 @@ export class UICard extends UIElement implements Selectable {
     
     if (this.element.animate) {
       this.events.removeAll()
-      this.eventsImg.removeAll()
+      this.eventsImg?.removeAll()
       this.element.style.position = 'absolute'
       this.element.style.left = start[0]+'px'
       this.element.style.top = start[1]+'px'
@@ -635,15 +593,87 @@ export class UICard extends UIElement implements Selectable {
     }
   }
   
-  private onLongPress() {
-    if (this.uislot.actionLongPress == 'flip') {
-      this.flip()
+  coordsAbsolute():Vector {
+    const rectThis = this.element.getBoundingClientRect()
+    return [rectThis.left + window.pageXOffset, rectThis.top + window.pageYOffset]
+  }
+
+  protected onLongPress() {}
+  
+  protected onClick() {}
+}
+
+//export class UIChip extends UIMovable {
+//}
+
+/*
+  Assumptions: 1->1 UICard->Card on given Playfield
+*/
+export class UICard extends UIMovable {
+  readonly wcard:WorldCard
+  readonly uislot:UISlot
+  private readonly faceUp:boolean
+  private playfield:Playfield
+  private notifierSlot:NotifierSlot
+  private readonly img:HTMLImageElement
+  
+  constructor(wcard:WorldCard, uislot:UISlot, dropTarget:boolean, viewer:Player, selection:Selection,
+              playfield:Playfield, notifierSlot:NotifierSlot, urlCardImages:string, urlCardBack:string,
+              cardWidth:number, cardHeight:number, classesCard=["card"]) {
+    super(document.createElement("div"), selection, dropTarget)
+    this.wcard = wcard
+    this.uislot = uislot
+    this.notifierSlot = notifierSlot
+    this.playfield = playfield
+    this.element.classList.add(...classesCard)
+    this.faceUp = wcard.faceUp && (this.uislot.isViewableBy(viewer) || wcard.faceUpIsConscious)
+
+    this.img = document.createElement("img")
+    if (this.faceUp) {
+      this.img.setAttribute('src', urlCardImages + '#c' + wcard.card.suit + '_' + wcard.card.rank)
     } else {
-      this.turn()
+      this.img.setAttribute('src', urlCardBack)
+    }
+
+    if (wcard.turned) {
+      this.element.classList.add('turned')
+    }
+    
+    this.img.setAttribute('width', cardWidth.toString())
+    this.img.setAttribute('height', cardHeight.toString())
+
+    this.element.appendChild(this.img)
+  }
+
+  init() {
+    super.init(this.img)
+  }
+
+  equalsVisually(rhs:this) {
+    return this.wcard.card.is(rhs.wcard.card) && this.faceUp == rhs.faceUp
+  }
+
+  is(rhs:this):boolean {
+    return this.wcard.is(rhs.wcard)
+  }
+  
+  protected doMove(uicards:readonly UICard[]) {
+    assert(uicards.length, "Move of no cards")
+    const cardsSrc = uicards.map(ui => ui.wcard)
+    const slotSrc = uicards[0].uislot.slot()
+    const slotDst = this.uislot.slot()
+
+    if (slotSrc === slotDst) {
+      const slot_ = slotSrc.remove(cardsSrc).add(cardsSrc, this.wcard)
+      this.playfield.slotsUpdate([[slotSrc, slot_]], this.notifierSlot)
+    } else {
+      const slotSrc_ = slotSrc.remove(cardsSrc)
+      const slotDst_ = slotDst.add(cardsSrc, this.wcard)
+      this.playfield.slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.notifierSlot)
     }
   }
   
-  private onClick() {
+  protected onClick() {
     // This logic is necessary to allow non-drop targets (single slot) to have this action fall through to the slot.
     if (this.dropTarget && this.selection.active() && !this.selection.includes(this)) {
       this.selection.finalize(this.doMove.bind(this), UICard)
@@ -651,6 +681,14 @@ export class UICard extends UIElement implements Selectable {
       this.selection.deselect()
     } else if (!this.selection.active()) {
       this.uislot.onCardClicked(this)
+    }
+  }
+  
+  protected onLongPress() {
+    if (this.uislot.actionLongPress == 'flip') {
+      this.flip()
+    } else {
+      this.turn()
     }
   }
   
@@ -665,33 +703,12 @@ export class UICard extends UIElement implements Selectable {
     const slot_ = slot.replace(this.wcard, this.wcard.withTurned(!this.wcard.turned))
     this.playfield.slotsUpdate([[slot, slot_]], this.notifierSlot)
   }
-  
-  private doMove(uicards:readonly UICard[]) {
-    assert(() => uicards.length)
-    const cardsSrc = uicards.map(ui => ui.wcard)
-    const slotSrc = uicards[0].uislot.slot()
-    const slotDst = this.uislot.slot()
-
-    if (slotSrc === slotDst) {
-      const slot_ = slotSrc.remove(cardsSrc).add(cardsSrc, this.wcard)
-      this.playfield.slotsUpdate([[slotSrc, slot_]], this.notifierSlot)
-    } else {
-      const slotSrc_ = slotSrc.remove(cardsSrc)
-      const slotDst_ = slotDst.add(cardsSrc, this.wcard)
-      this.playfield.slotsUpdate([[slotSrc, slotSrc_], [slotDst, slotDst_]], this.notifierSlot)
-    }
-  }
-}
-
-export interface Selectable {
-  onSelect():void
-  onDeselect():void
 }
 
 export class Selection {
-  private selected:readonly Selectable[] = []
+  private selected:readonly UIMovable[] = []
 
-  select(selects:readonly Selectable[]) {
+  select(selects:readonly UIMovable[]) {
     const deselects = this.selected.filter(s => !selects.includes(s))
     const newselects = selects.filter(s => !this.selected.includes(s))
     this.deselect(deselects)
@@ -699,20 +716,20 @@ export class Selection {
     for (const s of newselects) s.onSelect()
   }
 
-  deselect(selects:readonly Selectable[]=this.selected) {
-    assert(() => selects.every(s => this.selected.includes(s)))
+  deselect(selects:readonly UIMovable[]=this.selected) {
+    assert(selects.every(s => this.selected.includes(s)), "Deselect of unselected elem")
     for (const s of selects) s.onDeselect()
     this.selected = this.selected.filter(s => !selects.includes(s))
   }
 
-  finalize<T extends Selectable>(func:(selected:readonly T[]) => void, klass:new (...args:any) => T) {
-    assert(() => this.selected.every(s => s instanceof klass))
+  finalize<T extends UIMovable>(func:(selected:readonly T[]) => void, klass:new (...args:any) => T) {
+    assert(this.selected.every(s => s instanceof klass))
     if (this.selected.length > 0)
       func(this.selected as T[])
     this.deselect(this.selected)
   }
 
-  includes(s:Selectable) {
+  includes(s:UIMovable) {
     return this.selected.includes(s)
   }
 

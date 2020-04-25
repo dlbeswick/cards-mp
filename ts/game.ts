@@ -1,4 +1,4 @@
-import assert from './assert.js'
+import { assert, assertf } from './assert.js'
 import * as array from './array.js'
 import * as dom from './dom.js' // remove this
 import { Vector } from './math.js'
@@ -68,7 +68,7 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
   }
 
   first():S {
-    assert(() => this.slots)
+    assert(this.slots, "No first of empty slot")
     return this.slots[0]
   }
   
@@ -78,8 +78,8 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
 
   slot(id:number):S {
     const slot = this.slots.find(s => s.isId(id))
-    assert(() => slot)
-    return slot!
+    assert(slot, "No slot of id", id)
+    return slot
   }
   
   clear():this {
@@ -112,7 +112,7 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
     if (this.isId(slot_.idCnt)) {
       if (slot) {
         const idx = this.slots.findIndex(s => s.is(slot))
-        assert(() => idx != -1)
+        assert(idx != -1, "Slot not found in update", slot.id)
         return this.construct(
           this.id(),
           this.slots.slice(0, idx).concat([slot_] as S[]).concat(this.slots.slice(idx+1)),
@@ -162,22 +162,22 @@ abstract class SlotItem<T extends ItemSlot> extends IdentifiedVar<number> implem
     const idx = (() => {
       if (before) {
         const result = this.items.findIndex(i => i.is(before))
-        assert(() => result != -1)
+        assert(result != -1, "No 'before' elem", before)
         return result
       } else {
         return this.items.length
       }
     })()
     
-    assert(() => items.every(i => !this.items.some(i2 => i.is(i2))))
-    assert(() => idx >= 0 && idx <= this.items.length)
+    assert(items.every(i => !this.items.some(i2 => i.is(i2))), "Re-add of item to slot")
+    assertf(() => idx >= 0 && idx <= this.items.length)
     return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat(items).concat(this.items.slice(idx)))
   }
 
   remove(items:T[]):this {
     if (items.length) {
       const idx = this.items.findIndex(i => i.is(items[0]))
-      assert(() => idx != -1 && aryIdEquals(this.items.slice(idx, idx+1), items),
+      assertf(() => idx != -1 && aryIdEquals(this.items.slice(idx, idx+1), items),
              "Sequence to be removed not found in slot")
       return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat(this.items.slice(idx+items.length)))
     } else {
@@ -187,12 +187,12 @@ abstract class SlotItem<T extends ItemSlot> extends IdentifiedVar<number> implem
 
   replace(item:T, item_:T):this {
     const idx = this.items.findIndex(i => i.is(item))
-    assert(() => idx != -1, "Item to be replaced not found in slot")
+    assertf(() => idx != -1, "Item to be replaced not found in slot")
     return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat([item_]).concat(this.items.slice(idx+1)))
   }
 
   top():T {
-    assert(() => !this.isEmpty())
+    assertf(() => !this.isEmpty())
     return this.items[this.items.length-1]
   }
 
@@ -201,7 +201,7 @@ abstract class SlotItem<T extends ItemSlot> extends IdentifiedVar<number> implem
   }
 
   item(idx:number):T {
-    assert(() => idx >= 0 && idx < this.items.length)
+    assertf(() => idx >= 0 && idx < this.items.length)
     return this.items[idx]
   }
 
@@ -457,7 +457,7 @@ function newEventTarget() {
 }
 
 type FuncSlotUpdatePre = (updates:UpdateSlot<SlotCard>[], localAction:boolean) => any
-type FuncSlotUpdatePost = (result:ResultPreSlotUpdate, localAction:boolean) => void
+type FuncSlotUpdatePost = (updates:UpdateSlot<SlotCard>[], result:any, localAction:boolean) => void
 type ResultPreSlotUpdate = [FuncSlotUpdatePost, any]
 
 export class NotifierSlot {
@@ -491,9 +491,9 @@ export class NotifierSlot {
     return this.slotUpdates.map(([pre, post]) => [post, pre(updates, localAction)])
   }
 
-  postSlotUpdate(results:ResultPreSlotUpdate[], localAction:boolean) {
+  postSlotUpdate(updates:UpdateSlot<SlotCard>[], results:ResultPreSlotUpdate[], localAction:boolean) {
     for (const [post, result] of results) {
-      post(result, localAction)
+      post(updates, result, localAction)
     }
   }
 }
@@ -569,13 +569,13 @@ export class Playfield {
   
   container(id:string):ContainerSlotCard {
     const cnt = this.containers.find(c => c.isId(id))
-    assert(() => cnt)
+    assertf(() => cnt)
     return cnt!
   }
 
   containerChip(id:string):ContainerSlotChip {
     const cnt = this.containersChip.find(c => c.isId(id))
-    assert(() => cnt)
+    assertf(() => cnt)
     return cnt!
   }
   
@@ -589,7 +589,7 @@ export class Playfield {
   }*/
   
   slotsUpdate(updates:UpdateSlot<SlotCard>[], notifierSlot:NotifierSlot, send=true):Playfield {
-    assert(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
+    assertf(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     let containers_ = this.containers
     for (let update of updates) {
@@ -619,7 +619,7 @@ export class Playfield {
       )
     }
     
-    notifierSlot.postSlotUpdate(preSlotChangeInfo, send)
+    notifierSlot.postSlotUpdate(updates, preSlotChangeInfo, send)
     
     return playfield_
   }
@@ -686,8 +686,8 @@ export class Connections {
            onPeerConnect:(metadata:any, peerId:string) => void,
            onReceive:(data:any, registrant:any, peer:PeerPlayer) => void) {
     
-    assert(() => id)
-    assert(() => !this.registering)
+    assertf(() => id)
+    assertf(() => !this.registering)
     
     if (this.registrant) {
       if (id == this.registrant.id()) {
@@ -761,7 +761,7 @@ export class Connections {
   }
 
   connect(idPeer:string, onConnect?:(peer:PeerPlayer, conn:any) => void) {
-    assert(() => idPeer)
+    assertf(() => idPeer)
     
     if (this.registrant) {
       if (this.registrant.id == idPeer)

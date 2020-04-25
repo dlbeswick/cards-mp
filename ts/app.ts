@@ -1,4 +1,4 @@
-import assert from "./assert.js"
+import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
   Connections, EventContainerChange, EventPeerUpdate, EventSlotChange, Game, GameGinRummy, GameDummy, GamePoker,
@@ -6,7 +6,7 @@ import {
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Vector } from "./math.js"
-import { Selection, UICard, UIContainerFlex, UIContainerSlotsMulti, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
+import { Selection, UICard, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
 window.onerror = errorHandler
 
@@ -52,7 +52,7 @@ class App {
   
   constructor(games:Game[], notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string,
               viewer:Player, players:Player[], root:UISlotRoot) {
-    assert(() => games)
+    assertf(() => games)
     this.games = games
     this.game = games[0]
     this.notifierSlot = notifierSlot
@@ -102,7 +102,7 @@ class App {
   cardHeightGet() { return this.cardHeight }
   
   viewerSet(viewer:Player) {
-    assert(() => this.game)
+    assertf(() => this.game)
     this.viewer = viewer
 
     this.root.destroy()
@@ -134,21 +134,21 @@ class App {
     return this.game
   }
 
-  preSlotUpdate(updates:UpdateSlot<SlotCard>[], send:boolean):[UICard, Vector][] {
-    if (send) {
+  preSlotUpdate(updates:UpdateSlot<SlotCard>[], localAction:boolean):[UIMovable, Vector][] {
+    if (localAction) {
       this.connections.broadcast({slotUpdates: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
     }
-    
-    return this.root.uicardsForCards(updates.flatMap(([s, s_]) => s ? Array.from(s).map(wc => wc.card) : [])).
-      map(uicard => [uicard, uicard.coordsAbsolute()])
+
+    const slotsOld = updates.map(u => u[0]!).filter(u => u)
+    return this.root.uiMovablesForSlots(slotsOld).map(uim => [uim, uim.coordsAbsolute()])
   }
 
-  postSlotUpdate(uicards:[UICard, Vector][], localAction:boolean) {
+  postSlotUpdate(updates:UpdateSlot<SlotCard>[], uicards:[UIMovable, Vector][], localAction:boolean) {
     const msDuration = localAction ? 250 : 1000
     
-    const uicards_ = this.root.uicardsForCards(uicards.map(u => u[0].wcard.card))
+    const uicards_ = this.root.uiMovablesForSlots(updates.map(u => u[1]))
     for (const [uicard, start] of uicards) {
-      const uicard_ = uicards_.find(u_ => u_.wcard.card.is(uicard.wcard.card))
+      const uicard_ = uicards_.find(u_ => u_.is(uicard))
       if (uicard_) {
         if (uicard_ != uicard) {
           const end = uicard_.coordsAbsolute()
@@ -160,7 +160,7 @@ class App {
             uicard.animateTo(start, end, Number(uicard_.element.style.zIndex), msDuration,
                              () => {
                                uicard_.element.style.visibility = 'visible'
-                               if (uicard.equals(uicard_)) {
+                               if (uicard.equalsVisually(uicard_)) {
                                  uicard.destroy()
                                } else {
                                  uicard_.fadeTo('0%', '100%', 250)
@@ -171,8 +171,8 @@ class App {
           }
         }
       } else {
-        uicard.animateTo(start, [start[0], -200], Number(uicard.element.style.zIndex), msDuration,
-                         uicard.destroy.bind(uicard))
+        uicard.animateTo(start, [start[0], start[1]], Number(uicard.element.style.zIndex), 0)
+        uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
       }
     }
 
@@ -261,9 +261,9 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
   const root = app.rootGet()
   const viewer = app.viewerGet()
   const player = viewer.idSlots[0] ? viewer : app.playersGet()[0]!
-  assert(() => player)
+  assertf(() => player)
   const opponent:Player = app.playersGet().find(p => p.idSlots[0] && p != player)!
-  assert(() => opponent)
+  assertf(() => opponent)
   
   const uislotOpp = new UISlotSpread(opponent.idSlots[0], app.selection, opponent, viewer, playfield, 0,
                                      app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
@@ -305,9 +305,9 @@ function makeUiDummy(playfield:Playfield, app:App) {
   const root = app.rootGet()
   const viewer = app.viewerGet()
   const player = viewer.idSlots[0] ? viewer : app.playersGet()[0]!
-  assert(() => player)
+  assertf(() => player)
   const opponent:Player = app.playersGet().find(p => p.idSlots[0] && p != player)!
-  assert(() => opponent)
+  assertf(() => opponent)
   
   const uislotTop = new UISlotSpread(opponent.idSlots[0], app.selection, opponent, viewer, playfield, 0,
                                      app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
@@ -364,9 +364,9 @@ function makeUiPoker(playfield:Playfield, app:App) {
   const root = app.rootGet()
   const viewer = app.viewerGet()
   const player = viewer.idSlots[0] ? viewer : app.playersGet()[0]!
-  assert(() => player)
+  assertf(() => player)
   const opponent:Player = app.playersGet().find(p => p.idSlots[0] && p != player)!
-  assert(() => opponent)
+  assertf(() => opponent)
   
   const uislotOpp = new UISlotSpread(opponent.idSlots[0], app.selection, opponent, viewer, playfield, 0,
                                      app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),

@@ -1,4 +1,4 @@
-import assert from './assert.js'
+import { assert, assertf } from './assert.js'
 
 export function equals(lhs:any[], rhs:any[]) {
   if (lhs.length != rhs.length)
@@ -13,7 +13,7 @@ export function equals(lhs:any[], rhs:any[]) {
 
 export function remove(ary:any[], el:any) {
   const idx = ary.indexOf(el)
-  assert(() => idx != -1)
+  assert(idx != -1, "OOB remove from array")
   return ary.slice(0, idx).concat(ary.slice(idx+1))
 }
 
