@@ -1,6 +1,6 @@
 import assert from "./assert.js"
 import * as dom from "./dom.js"
-import { Card, ContainerSlotCard, EventContainerChange, EventSlotChange, NotifierSlot, Player, Playfield, SlotCard,
+import { Card, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventSlotChange, NotifierSlot, Player, Playfield, SlotCard,
          UpdateSlot, WorldCard } from './game.js'
 import { Vector } from './math.js'
 
@@ -15,7 +15,8 @@ class EventListeners {
   }
   
   add<T extends Event>(typeEvent:string, handler:(e:T) => boolean):RefEventListener {
-    const ref:RefEventListener = [typeEvent, EventListeners.preventDefaultWrapper.bind(undefined, handler)]
+    const ref:RefEventListener = [typeEvent,
+                                  EventListeners.preventDefaultWrapper.bind(undefined, handler)]
     this.refs.push(ref)
     this.target.addEventListener(typeEvent, ref[1])
     return ref
@@ -34,7 +35,7 @@ class EventListeners {
     this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
   }
   
-  private static preventDefaultWrapper<T extends Event>(this:undefined, func:(e:T) => boolean, e:T):void {
+  private static preventDefaultWrapper(func:(e:any) => boolean, e:any):void {
     if (!func(e)) {
       e.preventDefault()
       e.stopPropagation()
@@ -117,8 +118,8 @@ abstract class UIActionable extends UIElement {
   protected readonly owner:Player|null
   protected readonly viewer:Player
   protected readonly selection:Selection
-  protected readonly playfield:Playfield
   protected readonly notifierSlot:NotifierSlot
+  protected playfield:Playfield
   
   constructor(element:HTMLElement, idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
               playfield:Playfield, notifierSlot:NotifierSlot) {
@@ -285,6 +286,7 @@ export class UISlotSingle extends UISlot {
     this.cards.replaceWith(cards)
     this.cards = cards
     this.count.innerText = slot_.length().toString()
+    this.playfield = playfield_
   }
 
   private makeCardsDiv(height:string):HTMLElement {
@@ -354,6 +356,7 @@ export class UISlotSpread extends UISlot {
       }
       --idx
     }
+    this.playfield = playfield_
   }
 }
 
@@ -365,7 +368,7 @@ abstract class UIContainerSlots extends UIActionable {
               playfield:Playfield, notifierSlot:NotifierSlot) {
     super(element, idCnt, selection, owner, viewer, playfield, notifierSlot)
     
-    this.notifierSlot.container(this.idCnt).addEventListener<SlotCard>(
+    this.notifierSlot.container(this.idCnt).addEventListener<SlotCard, "containerchange">(
       "containerchange",
       (e:EventContainerChange<SlotCard>) => 
         this.change(e.playfield_, e.playfield.container(e.idCnt), e.playfield_.container(e.idCnt), e.updates)
@@ -448,6 +451,8 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
         this.children.push(uislot)
       }
     }
+    
+    this.playfield = playfield_
   }
 }
 

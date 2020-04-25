@@ -441,13 +441,13 @@ export class EventPeerUpdate extends Event {
   }
 }
 
-interface EventMapNotifierSlot<S extends Slot> {
+export interface EventMapNotifierSlot<S extends Slot> {
   "slotchange": EventSlotChange,
   "containerchange": EventContainerChange<S>
 }
 
 interface EventTargetNotifierSlot {
-  addEventListener<S extends Slot, K extends keyof EventMapNotifierSlot<S>=keyof EventMapNotifierSlot<S>>(type: K, listener: (ev: EventMapNotifierSlot<S>[K]) => any): void
+  addEventListener<S extends Slot, K extends keyof EventMapNotifierSlot<S>>(type: K, listener: (ev: EventMapNotifierSlot<S>[K]) => any): void
   dispatchEvent(event:Event):boolean
 }
 
@@ -456,7 +456,7 @@ function newEventTarget() {
   return document.createElement('div') as EventTargetNotifierSlot
 }
 
-type FuncSlotUpdatePre = (updates:UpdateSlot<SlotCard>[], localAction:boolean) => ResultPreSlotUpdate
+type FuncSlotUpdatePre = (updates:UpdateSlot<SlotCard>[], localAction:boolean) => any
 type FuncSlotUpdatePost = (result:ResultPreSlotUpdate, localAction:boolean) => void
 type ResultPreSlotUpdate = [FuncSlotUpdatePost, any]
 

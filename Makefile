@@ -26,8 +26,8 @@ www/js :
 www/css :
 	mkdir -p $@
 
-www/js/%.js: ts/*.ts
-	"$(TYPESCRIPT)" --noEmitOnError --strict --target es2019 --module es2015 --outDir www/js $(SRC)
+www/js/app.js: ts/*.ts
+	"$(TYPESCRIPT)" --noEmitOnError --strict --target es2019 --module es2015 --outDir www/js ts/app.ts
 
 www/css/app.css : sass/app.scss
 	"$(SASS)" $<:$@

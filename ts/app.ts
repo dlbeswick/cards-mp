@@ -69,7 +69,11 @@ class App {
       this.audioCtx = this.audioCtx || new ctx()
     return this.audioCtx
   }
-  
+
+  init() {
+    this.notifierSlot.registerSlotUpdate(this.preSlotUpdate.bind(this), this.postSlotUpdate.bind(this))
+  }
+                                         
   run(gameId:string) {
     this.newGame(gameId)
   }
@@ -424,6 +428,8 @@ function run(urlCards:string, urlCardBack:string) {
     [p0, p1, pSpectator],
     new UISlotRoot()
   )
+
+  app.init()
   
   appGlobal = app
 
