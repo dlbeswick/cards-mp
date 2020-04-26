@@ -1,7 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  Connections, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GamePoker, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  Connections, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Vector } from "./math.js"
@@ -299,6 +299,7 @@ class App {
 
   restore(serialized:any) {
     this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield), serialized.viewer)
+    this.sync()
   }
 }
 
@@ -405,6 +406,23 @@ function makeUiDummy(playfield:Playfield, app:App) {
   root.add(uislotStock)
 }
 
+function makeUiPlayerChips(app:App, owner:Player, viewer:Player, playfield:Playfield) {
+  return new UIContainerFlex().with(cnt => {
+    for (let idx=0; idx < 4; ++idx) {
+      cnt.add(
+        new UISlotChip(owner.idCnts[1], app.selection, owner, viewer, playfield, app.notifierSlot, idx,
+                       app.cardWidthGet()).init()
+      )
+    }
+  })
+}
+
+function makeUiPlayerCards(app:App, cntId:string, owner:Player, viewer:Player, playfield:Playfield, idSlot=0) {
+  return new UISlotSpread(cntId, app.selection, owner, viewer, playfield, idSlot,
+                          app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                          app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
+}
+
 function makeUiPoker(playfield:Playfield, app:App) {
   const root = app.rootGet()
   const viewer = app.viewerGet()
@@ -413,27 +431,10 @@ function makeUiPoker(playfield:Playfield, app:App) {
   const opponent = app.gameGet().players.find(p => p.idCnts[0] && p != player)
   assert(opponent)
 
-  function playerCards(owner:Player) {
-    return new UISlotSpread(owner.idCnts[0], app.selection, owner, viewer, playfield, 0,
-                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                       app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
-  }
-  
-  function playerChips(owner:Player) {
-    return new UIContainerFlex().with(cnt => {
-        for (let idx=0; idx < 4; ++idx) {
-          cnt.add(
-            new UISlotChip(owner.idCnts[1], app.selection, owner, viewer, playfield, app.notifierSlot, idx,
-                           app.cardWidthGet()).init()
-          )
-        }
-    })
-  }
-
   root.add(
     new UIContainerFlex('aware').with(cnt => {
-      cnt.add(playerChips(opponent))
-      cnt.add(playerCards(opponent))
+      cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
+      cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
     })
   )
   
@@ -473,7 +474,7 @@ function makeUiPoker(playfield:Playfield, app:App) {
 
   root.add(
     new UIContainerFlex('aware-reverse').with(cnt => {
-      cnt.add(playerCards(player))
+      cnt.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
       cnt.add(
         new UIContainerFlex().with(cnt => {
           for (let i=0; i<4; ++i)
@@ -483,9 +484,36 @@ function makeUiPoker(playfield:Playfield, app:App) {
             )
         })
       )
-      cnt.add(playerChips(player))
+      cnt.add(makeUiPlayerChips(app, player, viewer, playfield))
     })
   )
+}
+
+function makeUiPokerChinese(playfield:Playfield, app:App) {
+  const root = app.rootGet()
+  const viewer = app.viewerGet()
+  const player = viewer.idCnts[0] ? viewer : app.gameGet().players[0]
+  assert(player)
+  const opponent = app.gameGet().players.find(p => p.idCnts[0] && p != player)
+  assert(opponent)
+
+  root.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
+  
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      for (let i=0; i<3; ++i)
+        cnt.add(makeUiPlayerCards(app, opponent.idCnts[0] + "-show", opponent, viewer, playfield, i))
+    })
+  )
+  
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      for (let i=0; i<3; ++i)
+        cnt.add(makeUiPlayerCards(app, player.idCnts[0] + "-show", player, viewer, playfield, i))
+    })
+  )
+  
+  root.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
 }
 
 function run(urlCards:string, urlCardBack:string) {
@@ -494,6 +522,7 @@ function run(urlCards:string, urlCardBack:string) {
       new GameGinRummy(makeUiGinRummy),
       new GameDummy(makeUiDummy),
       new GamePoker(makeUiPoker),
+      new GamePokerChinese(makeUiPokerChinese),
     ],
     new NotifierSlot(),
     urlCards,

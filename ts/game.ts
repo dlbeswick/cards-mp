@@ -884,19 +884,20 @@ export abstract class Game extends IdentifiedVar {
     super(id)
     this.description = description
     this.makeUi = makeUi
-    this.players = players
+    this.players = players.concat([new Player('Spectator', [])])
   }
   
   abstract playfield():Playfield
   playfieldNewHand(playfieldOld:Playfield):Playfield {
-    return this.playfield()
+    const pf = this.playfield()
+    return new Playfield(pf.containers, playfieldOld.containersChip)
   }
 }
 
 export class GameGinRummy extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("gin-rummy", "Gin Rummy", makeUi,
-          [new Player('Player 1', ['p0']), new Player('Player 2', ['p1']), new Player('Spectator', [])])
+          [new Player('Player 1', ['p0']), new Player('Player 2', ['p1'])])
   }
   
   playfield():Playfield {
@@ -937,26 +938,22 @@ export class GameDummy extends Game {
   }
 }
 
-function range(i:number) {
-  return Array(i).fill(undefined)
-}
-
 export class GamePoker extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("poker", "Poker", makeUi,
           [new Player('Player 1', ['p0', 'p0-chip']),
            new Player('Player 2', ['p1', 'p1-chip']),
-           new Player('Spectator', [])])
+           ])
   }
   
   playfield():Playfield {
     const deck = shuffled(deck52())
 
     const chips = (id:string, base:number) => 
-      [new SlotChip(0, id, range(3).map((_,i) => new Chip(i+512+base, 100))),
-       new SlotChip(1, id, range(5).map((_,i) => new Chip(i+256+base, 50))),
-       new SlotChip(2, id, range(10).map((_,i) => new Chip(i+128+base,25))),
-       new SlotChip(3, id, range(20).map((_,i) => new Chip(i+base, 10)))
+      [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+512+base, 100))),
+       new SlotChip(1, id, array.range(5).map((_,i) => new Chip(i+256+base, 50))),
+       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,25))),
+       new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+base, 10)))
        ]
     
     return new Playfield(
@@ -973,10 +970,36 @@ export class GamePoker extends Game {
       ]
     )
   }
+}
+
+export class GamePokerChinese extends Game {
+  constructor(makeUi:(...args:any) => any) {
+    super("poker-chinese", "Chinese Poker", makeUi,
+          [new Player('Player 1', ['p0', 'p0-chip']),
+           new Player('Player 2', ['p1', 'p1-chip']),
+           ])
+  }
   
-  playfieldNewHand(playfieldOld:Playfield):Playfield {
-    const pf = this.playfield()
-    return new Playfield(pf.containers, playfieldOld.containersChip)
+  playfield():Playfield {
+    const deck = shuffled(deck52())
+
+    const chips = (id:string, base:number) => 
+      [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+512+base, 100))),
+       new SlotChip(1, id, array.range(5).map((_,i) => new Chip(i+256+base, 50))),
+       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,25))),
+       new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+base, 10)))
+       ]
+    
+    return new Playfield(
+      [new ContainerSlotCard("p0", [new SlotCard(0, "p0", deck.slice(0,13).map(c => new WorldCard(c, true)))]),
+       new ContainerSlotCard("p1", [new SlotCard(0, "p1", deck.slice(13,26).map(c => new WorldCard(c, true)))]),
+       new ContainerSlotCard("p0-show", array.range(3).map((_,i) => new SlotCard(i, "p0-show"))),
+       new ContainerSlotCard("p1-show", array.range(3).map((_,i) => new SlotCard(i, "p1-show")))
+      ],
+      [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
+       new ContainerSlotChip("p1-chip", chips("p1-chip", 4096))
+      ]
+    )
   }
 }
 

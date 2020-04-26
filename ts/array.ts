@@ -1,5 +1,9 @@
 import { assert, assertf } from './assert.js'
 
+export function range(i:number) {
+  return Array(i).fill(undefined)
+}
+
 export function equals(lhs:any[], rhs:any[]) {
   if (lhs.length != rhs.length)
     return false

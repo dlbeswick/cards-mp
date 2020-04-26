@@ -414,7 +414,6 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
   }
   
   onAction(selected:readonly UICard[]) {
-    assert(selected.length, "Empty selection")
     const cardsSrc = selected.map(ui => ui.wcard)
     const slotSrc = selected[0].uislot.slot()
     const slotSrc_ = slotSrc.remove(cardsSrc)
@@ -852,7 +851,7 @@ export class UICard extends UIMovable {
   protected onLongPress() {
     if (this.uislot.actionLongPress == 'flip') {
       this.flip()
-    } else {
+    } else if (this.uislot.actionLongPress == 'turn') {
       this.turn()
     }
   }
