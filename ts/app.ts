@@ -257,6 +257,7 @@ class App {
       //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
     } else if (data.sync) {
       this.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
+      dom.demandById("game-type", HTMLSelectElement).value = data.sync.game
     } else if (data.askSync) {
       this.sync(peer.id())
     } else if (data.slotUpdates) {
