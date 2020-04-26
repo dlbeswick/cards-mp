@@ -96,6 +96,14 @@ body {
 	}
 }
 
+.slot-overlap-chip {
+	width: 88px;
+}
+
+.slot-overlap .chip {
+	width: 2px;
+}
+
 .slot-overlap-vert  {
 	box-sizing: content-box;
 	vertical-align: top;
@@ -142,7 +150,22 @@ body {
 	}
 }
 
-.card.selected img {
+.chip {
+	display: inline-block;
+	
+	-webkit-user-select: none;
+	user-select: none;
+	
+	img {
+		-webkit-touch-callout: none;
+		-webkit-user-select: none;
+		user-select: none;
+		filter: invert(0%);
+		transition: filter 0.1s;
+	}
+}
+
+.selected img {
 	filter: invert(100%);
 	transition: filter 0.1s;
 }

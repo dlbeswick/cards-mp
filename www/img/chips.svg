@@ -12,28 +12,28 @@
 	</style>
 	
 	<g id="chip">
-	  <circle cx="25" cy="25" r="24" stroke="black"/>
+	  <circle cx="25" cy="25" r="24"/>
 	</g>
   </defs>
 
   <g font-size="30" font-family="Arial">
 	<g id="10">
-	  <use xlink:href="#chip" fill="white"/>
-	  <text x="8" y="34" fill="white" stroke="black" stroke-width=".5">10</text>
+	  <use xlink:href="#chip" fill="white" stroke="black"/>
+	  <text x="8" y="34" fill="black" stroke="white" stroke-width=".5">10</text>
 	</g>
 	
 	<g id="25">
-	  <use xlink:href="#chip" fill="green"/>
-	  <text x="8" y="34" fill="white" stroke="black" stroke-width=".5">25</text>
+	  <use xlink:href="#chip" fill="green" stroke="black"/>
+	  <text x="8" y="34" fill="black" stroke="black" stroke-width=".5">25</text>
 	</g>
 
 	<g id="50">
-	  <use xlink:href="#chip" fill="yellow"/>
+	  <use xlink:href="#chip" fill="yellow" stroke="black"/>
 	  <text x="8" y="34" fill="white" stroke="black" stroke-width=".5">50</text>
 	</g>
 
 	<g id="100" font-size="20" font-family="Arial">
-	  <use xlink:href="#chip" fill="black"/>
+	  <use xlink:href="#chip" fill="black" stroke="white"/>
 	  <text x="8" y="31" fill="white" stroke="black" stroke-width=".5">100</text>
 	</g>
   </g>

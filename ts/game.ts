@@ -18,6 +18,7 @@ export function aryIdEquals<T extends Identified>(lhs:T[], rhs:T[]) {
 
 interface Identified {
   is(rhs:this):boolean
+  serialize():any
 }
 
 abstract class IdentifiedByVal<IdType> implements Identified {
@@ -77,7 +78,7 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
   }
 
   slot(id:number):S {
-    const slot = this.slots.find(s => s.isId(id))
+    const slot = this.slots.find(s => s.isId(id, this.id()))
     assert(slot, "No slot of id", id)
     return slot
   }
@@ -91,7 +92,7 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
   }
   
   hasSlot(id:number, idCnt:string):boolean {
-    return this.isId(idCnt) && this.slots.some(s => s.isId(id))
+    return this.isId(idCnt) && this.slots.some(s => s.isId(id, idCnt))
   }
   
   lengthSlots():number {
@@ -132,25 +133,43 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
 }
 
 // Note: id is only unique within a container
-interface Slot extends IdentifiedVar<number> {
+export abstract class Slot implements Identified {
+  readonly id:number
   readonly idCnt:string
-  isEmpty():boolean
-  length():number
+
+  constructor(id:number, idCnt:string) {
+    this.id = id
+    this.idCnt = idCnt
+  }
+  
+  abstract isEmpty():boolean
+  abstract length():number
+
+  is(rhs:Slot) {
+    return this.isId(rhs.id, rhs.idCnt)
+  }
+
+  isId(id:number, idCnt:string) {
+    return this.id == id && this.idCnt == idCnt
+  }
+  
+  serialize():any {
+    return { id: this.id, idCnt: this.idCnt }
+  }
 }
 
-interface ItemSlot extends Identified {
+// An item within a slot
+export interface ItemSlot extends Identified {
   serialize():any
 }
 
-abstract class SlotItem<T extends ItemSlot> extends IdentifiedVar<number> implements Iterable<T>, Slot {
-  readonly idCnt:string
+abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> {
   protected readonly items:readonly T[]
   private readonly construct:(a:number, b:string, c:readonly T[]) => this
 
   constructor(id:number, construct:(a:number, b:string, c:readonly T[]) => any, idCnt:string, items:readonly T[]) {
-    super(id)
+    super(id, idCnt)
     this.items = items
-    this.idCnt = idCnt
     this.construct = construct
   }
 
@@ -171,15 +190,15 @@ abstract class SlotItem<T extends ItemSlot> extends IdentifiedVar<number> implem
     
     assert(items.every(i => !this.items.some(i2 => i.is(i2))), "Re-add of item to slot")
     assertf(() => idx >= 0 && idx <= this.items.length)
-    return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat(items).concat(this.items.slice(idx)))
+    return this.construct(this.id, this.idCnt, this.items.slice(0, idx).concat(items).concat(this.items.slice(idx)))
   }
 
   remove(items:T[]):this {
     if (items.length) {
       const idx = this.items.findIndex(i => i.is(items[0]))
-      assertf(() => idx != -1 && aryIdEquals(this.items.slice(idx, idx+1), items),
+      assertf(() => idx != -1 && aryIdEquals(this.items.slice(idx, idx+items.length), items),
              "Sequence to be removed not found in slot")
-      return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat(this.items.slice(idx+items.length)))
+      return this.construct(this.id, this.idCnt, this.items.slice(0, idx).concat(this.items.slice(idx+items.length)))
     } else {
       return this
     }
@@ -188,7 +207,7 @@ abstract class SlotItem<T extends ItemSlot> extends IdentifiedVar<number> implem
   replace(item:T, item_:T):this {
     const idx = this.items.findIndex(i => i.is(item))
     assertf(() => idx != -1, "Item to be replaced not found in slot")
-    return this.construct(this.id(), this.idCnt, this.items.slice(0, idx).concat([item_]).concat(this.items.slice(idx+1)))
+    return this.construct(this.id, this.idCnt, this.items.slice(0, idx).concat([item_]).concat(this.items.slice(idx+1)))
   }
 
   top():T {
@@ -214,7 +233,7 @@ abstract class SlotItem<T extends ItemSlot> extends IdentifiedVar<number> implem
   }
 
   map(f: (c: T) => T):this {
-    return this.construct(this.id(), this.idCnt, this.items.map(f))
+    return this.construct(this.id, this.idCnt, this.items.map(f))
   }
   
   [Symbol.iterator]():Iterator<T> {
@@ -228,7 +247,7 @@ export class SlotCard extends SlotItem<WorldCard> {
   }
 
   static fromSerialized(serialized:any) {
-    return new SlotCard(serialized.id, serialized.idCnt, serialized.cards.map((c:any) => WorldCard.fromSerialized(c)))
+    return new SlotCard(serialized.id, serialized.idCnt, serialized.items.map((c:any) => WorldCard.fromSerialized(c)))
   }
 
   container(playfield:Playfield):ContainerSlotCard {
@@ -251,11 +270,11 @@ export class ContainerSlotCard extends ContainerSlot<SlotCard, WorldCard> {
 }
 
 export class Player extends IdentifiedVar {
-  readonly idSlots:string[]
+  readonly idCnts:string[]
   
-  constructor(id:string, idSlots:string[]) {
+  constructor(id:string, idCnts:string[]) {
     super(id)
-    this.idSlots = idSlots
+    this.idCnts = idCnts
   }
 }
 
@@ -456,13 +475,14 @@ function newEventTarget() {
   return document.createElement('div') as EventTargetNotifierSlot
 }
 
-type FuncSlotUpdatePre = (updates:UpdateSlot<SlotCard>[], localAction:boolean) => any
-type FuncSlotUpdatePost = (updates:UpdateSlot<SlotCard>[], result:any, localAction:boolean) => void
-type ResultPreSlotUpdate = [FuncSlotUpdatePost, any]
+type FuncSlotUpdatePre<S extends Slot> = (updates:UpdateSlot<S>[], localAction:boolean) => any
+type FuncSlotUpdatePost = (updates:UpdateSlot<Slot>[], result:any, localAction:boolean) => void
+type ResultPreSlotUpdate = [FuncSlotUpdatePost, any][]
 
 export class NotifierSlot {
   private readonly events:Map<string, EventTargetNotifierSlot> = new Map()
-  private readonly slotUpdates:[FuncSlotUpdatePre, FuncSlotUpdatePost][] = []
+  private readonly slotUpdates:[FuncSlotUpdatePre<SlotCard>, FuncSlotUpdatePost][] = []
+  private readonly slotUpdatesChip:[FuncSlotUpdatePre<SlotChip>, FuncSlotUpdatePost][] = []
 
   container(idCnt:string) {
     let result = this.events.get(idCnt)
@@ -483,52 +503,53 @@ export class NotifierSlot {
     return result
   }
 
-  registerSlotUpdate(funcPre: FuncSlotUpdatePre,funcPost: FuncSlotUpdatePost) {
+  registerSlotUpdate(funcPre: FuncSlotUpdatePre<SlotCard>,funcPost: FuncSlotUpdatePost) {
     this.slotUpdates.push([funcPre, funcPost])
   }
   
-  preSlotUpdate(updates:UpdateSlot<SlotCard>[], localAction:boolean):ResultPreSlotUpdate[] {
+  registerSlotUpdateChip(funcPre: FuncSlotUpdatePre<SlotChip>,funcPost: FuncSlotUpdatePost) {
+    this.slotUpdatesChip.push([funcPre, funcPost])
+  }
+  
+  preSlotUpdateCard(updates:UpdateSlot<SlotCard>[], localAction:boolean):ResultPreSlotUpdate {
     return this.slotUpdates.map(([pre, post]) => [post, pre(updates, localAction)])
   }
 
-  postSlotUpdate(updates:UpdateSlot<SlotCard>[], results:ResultPreSlotUpdate[], localAction:boolean) {
+  preSlotUpdateChip(updates:UpdateSlot<SlotChip>[], localAction:boolean):ResultPreSlotUpdate {
+    return this.slotUpdatesChip.map(([pre, post]) => [post, pre(updates, localAction)])
+  }
+  
+  postSlotUpdate(updates:UpdateSlot<Slot>[], results:ResultPreSlotUpdate, localAction:boolean) {
     for (const [post, result] of results) {
       post(updates, result, localAction)
     }
   }
 }
 
-class Chip implements Identified {
-  private readonly id:number
-  private readonly owner:Player
-  private readonly value:number
+export class Chip extends IdentifiedVar<number> {
+  readonly value:number
   
-  constructor(owner:Player, id:number, value:number) {
-    this.id = id
+  constructor(id:number, value:number) {
+    super(id)
     this.value = value
-    this.owner = owner
-  }
-
-  is(rhs:Chip):boolean {
-    return this.id == rhs.id && this.owner.is(rhs.owner)
   }
 
   serialize(): any {
-    return { id: this.id, value: this.value }
+    return {...super.serialize(), value: this.value }
   }
   
-  static fromSerialized(owner:Player, s:any) {
-    return new Chip(owner, s.id, s.value)
+  static fromSerialized(s:any) {
+    return new Chip(s.id, s.value)
   }
 }
 
-class SlotChip extends SlotItem<Chip> {
+export class SlotChip extends SlotItem<Chip> {
   constructor(id:number, idCnt:string, chips:readonly Chip[] = []) {
     super(id, (id:number,idCnt:string,chips:readonly Chip[]) => new SlotChip(id, idCnt, chips), idCnt, chips)
   }
 
-  static fromSerialized(owner:Player, serialized:any) {
-    return new SlotCard(serialized.id, serialized.idCnt, serialized.cards.map((c:any) => Chip.fromSerialized(owner,c)))
+  static fromSerialized(serialized:any):SlotChip {
+    return new SlotChip(serialized.id, serialized.idCnt, serialized.items.map((c:any) => Chip.fromSerialized(c)))
   }
 
   container(playfield:Playfield):ContainerSlotChip {
@@ -544,27 +565,30 @@ class ContainerSlotChip extends ContainerSlot<SlotChip, Chip> {
           secret)
   }
   
-  static fromSerialized(owner:Player, s:any) {
-    return new ContainerSlotChip(s.id, s.slots.map((c:any) => SlotChip.fromSerialized(owner, c)), s.secret)
+  static fromSerialized(s:any) {
+    return new ContainerSlotChip(s.id, s.slots.map((c:any) => SlotChip.fromSerialized(c)), s.secret)
   }
 }
 
 export class Playfield {
   readonly containers:ContainerSlotCard[]
-  readonly containersChip:ContainerSlotChip[] = []
+  readonly containersChip:ContainerSlotChip[]
 
-  constructor(containers:ContainerSlotCard[]) {
+  constructor(containers:ContainerSlotCard[], containersChip:ContainerSlotChip[]) {
     this.containers = containers
+    this.containersChip = containersChip
   }
 
   static fromSerialized(serialized:any):Playfield {
     return new Playfield(
-      serialized.containers.map((s:any) => ContainerSlotCard.fromSerialized(s))
+      serialized.containers.map((s:any) => ContainerSlotCard.fromSerialized(s)),
+      serialized.containersChip.map((s:any) => ContainerSlotChip.fromSerialized(s))
     )
   }
   
   serialize():any {
-    return { containers: this.containers.map(s => s.serialize()) }
+    return { containers: this.containers.map(s => s.serialize()),
+             containersChip: this.containersChip.map(s => s.serialize()) }
   }
   
   container(id:string):ContainerSlotCard {
@@ -578,38 +602,52 @@ export class Playfield {
     assertf(() => cnt)
     return cnt!
   }
-  
-/*  wcard(id:string):WorldCard {
-    for (const cnt of this.containers) {
-      const w = cnt.slotFindByItem(id)?.findById(id)
-      if (w)
-        return w
-    }
-    throw new Error(`Card ${id} is not in any slot`)
-  }*/
-  
-  slotsUpdate(updates:UpdateSlot<SlotCard>[], notifierSlot:NotifierSlot, send=true):Playfield {
+
+  withUpdateCard(updates:UpdateSlot<SlotCard>[]):Playfield {
     assertf(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     let containers_ = this.containers
     for (let update of updates) {
       containers_ = containers_.map(cnt => cnt.update(update))
     }
-    const playfield_ = new Playfield(containers_)
-
-    const preSlotChangeInfo = notifierSlot.preSlotUpdate(updates, send)
+    return new Playfield(containers_, this.containersChip)
+  }
+  
+  withUpdateChip(updates:UpdateSlot<SlotChip>[]):Playfield {
+    assertf(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
-    const cntChanged:Map<string, UpdateSlot<SlotCard>[]> = new Map()
+    let containers_ = this.containersChip
+    for (let update of updates) {
+      containers_ = containers_.map(cnt => cnt.update(update))
+    }
+    return new Playfield(this.containers, containers_)
+  }
+
+  slotsUpdateCard(playfield_:Playfield, updates:UpdateSlot<SlotCard>[], notifierSlot:NotifierSlot,
+                  send=true):Playfield {
+    return this.slotsUpdate(playfield_, updates, notifierSlot, send, notifierSlot.preSlotUpdateCard(updates, send))
+  }
+  
+  slotsUpdateChip(playfield_:Playfield, updates:UpdateSlot<SlotChip>[], notifierSlot:NotifierSlot,
+                  send=true):Playfield {
+    return this.slotsUpdate(playfield_, updates, notifierSlot, send, notifierSlot.preSlotUpdateChip(updates, send))
+  }
+  
+  protected slotsUpdate<S extends Slot>(
+    playfield_:Playfield, updates:UpdateSlot<S>[], notifierSlot:NotifierSlot, send:boolean,
+    preSlotChangeInfo:ResultPreSlotUpdate
+  ):Playfield {
+    const cntChanged:Map<string, UpdateSlot<S>[]> = new Map()
     for (const update of updates) {
       const [slot, slot_] = update
       
       if (!cntChanged.has(slot_.idCnt)) {
         cntChanged.set(slot_.idCnt, [])
       }
-      (cntChanged.get(slot_.idCnt) as UpdateSlot<SlotCard>[]).push(update)
+      (cntChanged.get(slot_.idCnt) as UpdateSlot<S>[]).push(update)
 
-      notifierSlot.slot(slot_.idCnt, slot_.id()).dispatchEvent(
-        new EventSlotChange(this, playfield_, slot_.idCnt, slot_.id())
+      notifierSlot.slot(slot_.idCnt, slot_.id).dispatchEvent(
+        new EventSlotChange(this, playfield_, slot_.idCnt, slot_.id)
       )
     }
 
@@ -736,6 +774,7 @@ export class Connections {
 
     registrant.on('connection', (conn:any) => {
       console.log("Peer connected to us", conn)
+      
       if (!this.peerById(conn.peer) || !this.peerById(conn.peer)!.open()) {
         this.connect(conn.peer, () => {
           this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id())}})
@@ -745,7 +784,7 @@ export class Connections {
 
       // Receive messages
       conn.on('data', (data:any) => {
-        const peer = this.peerById(conn.id)
+        const peer = this.peerById(conn.peer)
         if (peer)
           onReceive(data, registrant, peer)
       })
@@ -826,11 +865,13 @@ export class Connections {
 export abstract class Game extends IdentifiedVar {
   readonly description:string
   readonly makeUi:(...args:any) => void
+  readonly players:Player[]
 
-  constructor(id:string, description:string, makeUi:(...args:any) => void) {
+  constructor(id:string, description:string, makeUi:(...args:any) => void, players:Player[]) {
     super(id)
     this.description = description
     this.makeUi = makeUi
+    this.players = players
   }
   
   abstract playfield():Playfield
@@ -838,7 +879,8 @@ export abstract class Game extends IdentifiedVar {
 
 export class GameGinRummy extends Game {
   constructor(makeUi:(...args:any) => any) {
-    super("gin-rummy", "Gin Rummy", makeUi)
+    super("gin-rummy", "Gin Rummy", makeUi,
+          [new Player('Player 1', ['p0']), new Player('Player 2', ['p1']), new Player('Spectator', [])])
   }
   
   playfield():Playfield {
@@ -850,14 +892,16 @@ export class GameGinRummy extends Game {
                                          sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true)))]),
        new ContainerSlotCard("waste", [new SlotCard(0, "waste")]),
        new ContainerSlotCard("stock", [new SlotCard(0, "stock",
-                                                      deck.slice(20).map(c => new WorldCard(c, false)))])]
+                                                    deck.slice(20).map(c => new WorldCard(c, false)))])],
+      []
     )
   }
 }
 
 export class GameDummy extends Game {
   constructor(makeUi:(...args:any) => any) {
-    super("dummy", "Dummy / 500 Rum", makeUi)
+    super("dummy", "Dummy / 500 Rum", makeUi,
+          [new Player('Player 1', ['p0']), new Player('Player 2', ['p1']), new Player('Spectator', [])])
   }
   
   playfield():Playfield {
@@ -871,25 +915,45 @@ export class GameDummy extends Game {
        new ContainerSlotCard("waste", [new SlotCard(0, "waste")]),
        new ContainerSlotCard("p1-meld", []),
        new ContainerSlotCard("stock", [new SlotCard(0, "stock",
-                                            deck.slice(26).map(c => new WorldCard(c, false)))])]
+                                                    deck.slice(26).map(c => new WorldCard(c, false)))])],
+      []
     )
   }
 }
 
+function range(i:number) {
+  return Array(i).fill(undefined)
+}
+
 export class GamePoker extends Game {
   constructor(makeUi:(...args:any) => any) {
-    super("poker", "Poker", makeUi)
+    super("poker", "Poker", makeUi,
+          [new Player('Player 1', ['p0', 'p0-chip']),
+           new Player('Player 2', ['p1', 'p1-chip']),
+           new Player('Spectator', [])])
   }
   
   playfield():Playfield {
     const deck = shuffled(deck52())
+
+    const chips = (id:string, base:number) => 
+      [new SlotChip(0, id),
+       new SlotChip(1, id, range(5).map((_,i) => new Chip(i+256+base, 100))),
+       new SlotChip(2, id, range(10).map((_,i) => new Chip(i+128+base,25))),
+       new SlotChip(3, id, range(25).map((_,i) => new Chip(i+base, 10)))
+       ]
+    
     return new Playfield(
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
        new ContainerSlotCard("waste-secret", [new SlotCard(0, "waste-secret")], true),
        new ContainerSlotCard("waste", [new SlotCard(0, "waste")]),
        new ContainerSlotCard("stock", [new SlotCard(0, "stock",
-                                                    deck.map(c => new WorldCard(c, false)))])]
+                                                    deck.map(c => new WorldCard(c, false)))])],
+      [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
+       new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),
+       new ContainerSlotChip("ante", [new SlotChip(0, "ante")])
+      ]
     )
   }
 }

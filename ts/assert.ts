@@ -1,6 +1,6 @@
 import errorHandler from "./error_handler.js"
 
-export function assert(test:any, message='', ...args:any): asserts test {
+export function assert(test:any, message='Assertion failed', ...args:any): asserts test {
   if (!test) {
     for (let arg of args) {
       message += JSON.stringify(arg) + " "
@@ -12,8 +12,8 @@ export function assert(test:any, message='', ...args:any): asserts test {
 
 export function assertf(test:() => any, message?:string, ...args:any):void {
   if (!test()) {
-    errorHandler(message ?? test.toString() + args.map(JSON.stringify).join(" "), undefined, undefined, undefined,
-                 undefined, false)
+    message = message ?? test.toString() + args.map(JSON.stringify).join(" ")
+    errorHandler(message, undefined, undefined, undefined, undefined, false)
     throw new Error(message)
   }
 }
