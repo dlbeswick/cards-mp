@@ -1,54 +1,15 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
-import { Card, Chip, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventSlotChange, NotifierSlot, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot, WorldCard } from './game.js'
+import { Card, Chip, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventPlayfieldChange, EventSlotChange, NotifierSlot, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot, WorldCard } from './game.js'
 import { Vector } from './math.js'
-
-type RefEventListener = [string, (e:Event) => void]
-
-class EventListeners {
-  private refs:RefEventListener[] = []
-  private target:EventTarget
-
-  constructor(e:EventTarget) {
-    this.target = e
-  }
-  
-  add<T extends Event>(typeEvent:string, handler:(e:T) => boolean):RefEventListener {
-    const ref:RefEventListener = [typeEvent,
-                                  EventListeners.preventDefaultWrapper.bind(undefined, handler)]
-    this.refs.push(ref)
-    this.target.addEventListener(typeEvent, ref[1])
-    return ref
-  }
-
-  removeAll() {
-    for (const ref of this.refs)
-      this.target.removeEventListener(...ref)
-    this.refs = []
-  }
-
-  remove(ref:RefEventListener) {
-    const idx = this.refs.indexOf(ref)
-    assert(idx != -1)
-    this.target.removeEventListener(...ref)
-    this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
-  }
-  
-  private static preventDefaultWrapper(func:(e:any) => boolean, e:any):void {
-    if (!func(e)) {
-      e.preventDefault()
-      e.stopPropagation()
-    }
-  }
-}
 
 abstract class UIElement {
   readonly element:HTMLElement
-  protected readonly events:EventListeners
+  protected readonly events:dom.EventListeners
 
   constructor(element:HTMLElement) {
     this.element = element
-    this.events = new EventListeners(this.element)
+    this.events = new dom.EventListeners(this.element)
   }
 
   destroy() {
@@ -129,6 +90,7 @@ abstract class UIActionable extends UIElement {
   protected readonly viewer:Player
   protected readonly selection:Selection
   protected readonly notifierSlot:NotifierSlot
+  private readonly eventsPlayfield:dom.EventListeners
   protected playfield:Playfield
   
   constructor(element:HTMLElement, idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
@@ -143,9 +105,15 @@ abstract class UIActionable extends UIElement {
     this.selection = selection
     this.playfield = playfield
     this.notifierSlot = notifierSlot
+    this.eventsPlayfield = new dom.EventListeners(this.notifierSlot.playfield as EventTarget)
   }
 
   init():this {
+    this.eventsPlayfield.add(
+      "playfieldchange",
+      (e:EventPlayfieldChange) => { this.playfield = e.playfield_; return true }
+    )
+    
     this.events.add("click", this.onClick.bind(this))
     return this
   }
@@ -153,6 +121,11 @@ abstract class UIActionable extends UIElement {
   abstract uiMovablesForSlots(slots:Slot[]):UIMovable[]
   protected abstract onAction(selected:readonly UIMovable[]):void
 
+  destroy() {
+    super.destroy()
+    this.eventsPlayfield.removeAll()
+  }
+  
   isViewableBy(viewer:Player) {
     return this.owner == null || viewer == this.owner
   }
@@ -166,10 +139,11 @@ abstract class UIActionable extends UIElement {
 abstract class UISlotCard extends UIActionable {
   idSlot:number
   readonly actionLongPress:string
-  private readonly selectionMode:string
   protected children:UICard[] = []
   protected readonly urlCards:string
   protected readonly urlCardBack:string
+  private readonly selectionMode:string
+  private readonly eventsSlot:dom.EventListeners
   
   constructor(element:HTMLElement, idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
               playfield:Playfield, idSlot:number, notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string,
@@ -185,11 +159,14 @@ abstract class UISlotCard extends UIActionable {
 
     this.element.classList.add("slot")
     
-    notifierSlot.slot(this.idCnt, this.idSlot).addEventListener(
+    this.eventsSlot = new dom.EventListeners(notifierSlot.slot(this.idCnt, this.idSlot) as EventTarget)
+    this.eventsSlot.add(
       "slotchange",
-      (e:EventSlotChange) => 
+      (e:EventSlotChange) => {
         this.change(e.playfield_, e.playfield.container(e.idCnt).slot(e.idSlot),
                     e.playfield_.container(e.idCnt).slot(e.idSlot))
+        return true
+      }
     )
   }
 
@@ -204,6 +181,7 @@ abstract class UISlotCard extends UIActionable {
     super.destroy()
     for (const child of this.children)
       child.destroy()
+    this.eventsSlot.removeAll()
   }
   
   slot():SlotCard {
@@ -286,7 +264,7 @@ export class UISlotSingle extends UISlotCard {
     const cards = this.makeCardsDiv(this.height)
     this.children = []
     if (!slot_.isEmpty()) {
-      this.children[0] = new UICard(slot_.top(), this, false, this.viewer, this.selection, this.playfield,
+      this.children[0] = new UICard(slot_.top(), this, false, this.viewer, this.selection, playfield_,
                                     this.notifierSlot, this.urlCards, this.urlCardBack, this.cardWidth, this.cardHeight)
       this.children[0].init()
       cards.appendChild(this.children[0].element)
@@ -352,7 +330,7 @@ export class UISlotSpread extends UISlotCard {
       const wcard = cards_[idx]
       const child = this.children[idx]
       if (!child || !child.wcard.equals(wcard)) {
-        const uicard = new UICard(wcard, this, true, this.viewer, this.selection, this.playfield, this.notifierSlot,
+        const uicard = new UICard(wcard, this, true, this.viewer, this.selection, playfield_, this.notifierSlot,
                                   this.urlCards, this.urlCardBack, this.cardWidth, this.cardHeight, this.classesCard)
         uicard.init()
         uicard.element.style.zIndex = (idx+1).toString() // Keep it +1 just in case transitions ever need to avoid
@@ -373,19 +351,29 @@ export class UISlotSpread extends UISlotCard {
   UI elements that can visualise ContainerSlots.
 */
 abstract class UIContainerSlots extends UIActionable {
+  private readonly eventsContainer:dom.EventListeners
+  
   constructor(element:HTMLElement, idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
               playfield:Playfield, notifierSlot:NotifierSlot) {
     super(element, idCnt, selection, owner, viewer, playfield, notifierSlot)
-    
-    this.notifierSlot.container(this.idCnt).addEventListener<SlotCard, "containerchange">(
+
+    this.eventsContainer = new dom.EventListeners(this.notifierSlot.container(this.idCnt) as EventTarget)
+    this.eventsContainer.add(
       "containerchange",
-      (e:EventContainerChange<SlotCard>) => 
+      (e:EventContainerChange<SlotCard>) => {
         this.change(e.playfield_, e.playfield.container(e.idCnt), e.playfield_.container(e.idCnt), e.updates)
+        return true
+      }
     )
   }
 
   abstract change(playfield_:Playfield, cnt:ContainerSlotCard, cnt_:ContainerSlotCard,
                   updates:UpdateSlot<SlotCard>[]):void
+
+  destroy() {
+    super.destroy()
+    this.eventsContainer.removeAll()
+  }
 }
 
 /*
@@ -474,7 +462,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
 export abstract class UIMovable extends UIElement {
   protected readonly selection:Selection
   protected readonly dropTarget:boolean
-  private eventsImg?:EventListeners
+  private eventsImg?:dom.EventListeners
   private timerPress:number|null = null
   private touch?:Touch
 
@@ -491,7 +479,7 @@ export abstract class UIMovable extends UIElement {
     // Adding events to a small-width div (as with cards) works fine on Chrome and FF, but iOS ignores clicks on the
     // image if it extends past the div borders. Or perhaps it's firing pointerups? That's why a specific events target
     // on the actual clickable is needed.
-    this.eventsImg = new EventListeners(elementClickable)
+    this.eventsImg = new dom.EventListeners(elementClickable)
 
     function lpMouseUp(self:UIMovable) {
       if (self.timerPress) {
@@ -623,6 +611,7 @@ export class UISlotChip extends UIActionable {
   readonly idSlot:number
   protected children:UIChip[] = []
   private readonly cardWidth:number
+  private readonly eventsSlot:dom.EventListeners
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
               playfield:Playfield, notifierSlot:NotifierSlot, idSlot:number, cardWidth:number) {
@@ -635,12 +624,15 @@ export class UISlotChip extends UIActionable {
     this.element.classList.add("slot")
     this.element.classList.add("slot-overlap")
     this.element.classList.add("slot-overlap-chip")
-    
-    notifierSlot.slot(this.idCnt, this.idSlot).addEventListener(
+
+    this.eventsSlot = new dom.EventListeners(notifierSlot.slot(this.idCnt, this.idSlot) as EventTarget)
+    this.eventsSlot.add(
       "slotchange",
-      (e:EventSlotChange) => 
+      (e:EventSlotChange) => {
         this.change(e.playfield_, e.playfield.containerChip(e.idCnt).slot(e.idSlot),
                     e.playfield_.containerChip(e.idCnt).slot(e.idSlot))
+        return true
+      }
     )
   }
 
@@ -679,6 +671,7 @@ export class UISlotChip extends UIActionable {
     super.destroy()
     for (const child of this.children)
       child.destroy()
+    this.eventsSlot.removeAll()
   }
   
   slot():SlotChip {
@@ -757,6 +750,7 @@ export class UIChip extends UIMovable {
   Assumptions: 1->1 UICard->Card on given Playfield
 */
 export class UICard extends UIMovable {
+  private readonly eventsPf:dom.EventListeners
   readonly wcard:WorldCard
   readonly uislot:UISlotCard
   private readonly faceUp:boolean
@@ -790,6 +784,15 @@ export class UICard extends UIMovable {
     this.img.setAttribute('height', cardHeight.toString())
 
     this.element.appendChild(this.img)
+
+    this.eventsPf = new dom.EventListeners(this.notifierSlot.playfield as EventTarget)
+    this.eventsPf.add(
+      "playfieldchange",
+      (e:EventPlayfieldChange) => {
+        this.playfield = e.playfield_
+        return true
+      }
+    )
   }
 
   init():this {
@@ -797,6 +800,11 @@ export class UICard extends UIMovable {
     return this
   }
 
+  destroy() {
+    super.destroy()
+    this.eventsPf.removeAll()
+  }
+  
   equalsVisually(rhs:this) {
     return this.wcard.card.is(rhs.wcard.card) && this.faceUp == rhs.faceUp
   }

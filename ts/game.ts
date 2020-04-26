@@ -113,7 +113,7 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
     if (this.isId(slot_.idCnt)) {
       if (slot) {
         const idx = this.slots.findIndex(s => s.is(slot))
-        assert(idx != -1, "Slot not found in update", slot.id)
+        assert(idx != -1, "Slot not found in update", slot.id, slot.idCnt)
         return this.construct(
           this.id(),
           this.slots.slice(0, idx).concat([slot_] as S[]).concat(this.slots.slice(idx+1)),
@@ -195,10 +195,8 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
 
   remove(items:T[]):this {
     if (items.length) {
-      const idx = this.items.findIndex(i => i.is(items[0]))
-      assertf(() => idx != -1 && aryIdEquals(this.items.slice(idx, idx+items.length), items),
-             "Sequence to be removed not found in slot")
-      return this.construct(this.id, this.idCnt, this.items.slice(0, idx).concat(this.items.slice(idx+items.length)))
+      assertf(() => items.every(i => this.items.some(i2 => i2.is(i))), "Some items to be removed not found in slot")
+      return this.construct(this.id, this.idCnt, this.items.filter(i => !items.some(i2 => i2.is(i))))
     } else {
       return this
     }
@@ -460,9 +458,21 @@ export class EventPeerUpdate extends Event {
   }
 }
 
+export class EventPlayfieldChange extends Event {
+  readonly playfield:Playfield
+  readonly playfield_:Playfield
+
+  constructor(playfield:Playfield, playfield_:Playfield) {
+    super('playfieldchange')
+    this.playfield = playfield
+    this.playfield_ = playfield_
+  }
+}
+
 export interface EventMapNotifierSlot<S extends Slot> {
   "slotchange": EventSlotChange,
-  "containerchange": EventContainerChange<S>
+  "containerchange": EventContainerChange<S>,
+  "playfieldchange": EventPlayfieldChange
 }
 
 interface EventTargetNotifierSlot {
@@ -480,6 +490,7 @@ type FuncSlotUpdatePost = (updates:UpdateSlot<Slot>[], result:any, localAction:b
 type ResultPreSlotUpdate = [FuncSlotUpdatePost, any][]
 
 export class NotifierSlot {
+  readonly playfield:EventTargetNotifierSlot = newEventTarget()
   private readonly events:Map<string, EventTargetNotifierSlot> = new Map()
   private readonly slotUpdates:[FuncSlotUpdatePre<SlotCard>, FuncSlotUpdatePost][] = []
   private readonly slotUpdatesChip:[FuncSlotUpdatePre<SlotChip>, FuncSlotUpdatePost][] = []
@@ -658,6 +669,8 @@ export class Playfield {
     }
     
     notifierSlot.postSlotUpdate(updates, preSlotChangeInfo, send)
+    
+    notifierSlot.playfield.dispatchEvent(new EventPlayfieldChange(this, playfield_))
     
     return playfield_
   }
