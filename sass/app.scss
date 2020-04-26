@@ -7,12 +7,24 @@ $on-laptop:        800px !default;
   }
 }
 
+// This class is left-to-right on desktop and top-to-bottom on mobile.
 .flex {
 	display: flex;
 }
 
+// This class is right-to-left on desktop but top-to-bottom on mobile.
+.flex-reverse {
+	display: flex;
+	flex-direction: row-reverse;
+}
+
 @include media-query($on-palm) {
 	.flex {
+		flex-direction: column;
+	}
+
+	// Not reversed on mobile
+	.flex-reverse {
 		flex-direction: column;
 	}
 }

@@ -413,28 +413,29 @@ function makeUiPoker(playfield:Playfield, app:App) {
   const opponent = app.gameGet().players.find(p => p.idCnts[0] && p != player)
   assert(opponent)
 
-  function playerSlots(owner:Player) {
-    return new UIContainerFlex('aware').with(cnt => {
-      cnt.add(
-        new UIContainerFlex().with(cnt => {
-          for (let idx=0; idx < 4; ++idx) {
-            cnt.add(
-              new UISlotChip(owner.idCnts[1], app.selection, owner, viewer, playfield, app.notifierSlot, idx,
-                             app.cardWidthGet()).init()
-            )
-          }
-        })
-      )
-      
-      cnt.add(
-        new UISlotSpread(owner.idCnts[0], app.selection, owner, viewer, playfield, 0,
-                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                         app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
-      )
+  function playerCards(owner:Player) {
+    return new UISlotSpread(owner.idCnts[0], app.selection, owner, viewer, playfield, 0,
+                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                       app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
+  }
+  
+  function playerChips(owner:Player) {
+    return new UIContainerFlex().with(cnt => {
+        for (let idx=0; idx < 4; ++idx) {
+          cnt.add(
+            new UISlotChip(owner.idCnts[1], app.selection, owner, viewer, playfield, app.notifierSlot, idx,
+                           app.cardWidthGet()).init()
+          )
+        }
     })
   }
 
-  root.add(playerSlots(opponent))
+  root.add(
+    new UIContainerFlex('aware').with(cnt => {
+      cnt.add(playerChips(opponent))
+      cnt.add(playerCards(opponent))
+    })
+  )
   
   root.add(
     new UIContainerDiv().with(cnt => {
@@ -467,7 +468,12 @@ function makeUiPoker(playfield:Playfield, app:App) {
           cnt.add(divStock)
         })
       )
+    })
+  )
 
+  root.add(
+    new UIContainerFlex('aware-reverse').with(cnt => {
+      cnt.add(playerCards(player))
       cnt.add(
         new UIContainerFlex().with(cnt => {
           for (let i=0; i<4; ++i)
@@ -477,10 +483,9 @@ function makeUiPoker(playfield:Playfield, app:App) {
             )
         })
       )
+      cnt.add(playerChips(player))
     })
   )
-
-  root.add(playerSlots(player))
 }
 
 function run(urlCards:string, urlCardBack:string) {

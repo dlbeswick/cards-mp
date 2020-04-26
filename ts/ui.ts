@@ -69,6 +69,8 @@ export class UIContainerFlex extends UIContainer {
       this.element.style.flexGrow = "1"
     if (direction == 'aware')
       this.element.classList.add("flex")
+    else if (direction == 'aware-reverse')
+      this.element.classList.add("flex-reverse")
     else
       this.element.style.flexDirection = direction
   }
