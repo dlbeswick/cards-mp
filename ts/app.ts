@@ -1,8 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  Connections, EventContainerChange, EventPeerUpdate, EventSlotChange, Game, GameGinRummy, GameDummy, GamePoker,
-  NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  Connections, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GamePoker, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Vector } from "./math.js"
@@ -70,6 +69,8 @@ class App {
   init() {
     this.notifierSlot.registerSlotUpdate(this.preSlotUpdateCard.bind(this), this.postSlotUpdate.bind(this))
     this.notifierSlot.registerSlotUpdateChip(this.preSlotUpdateChip.bind(this), this.postSlotUpdate.bind(this))
+    this.notifierSlot.playfield.addEventListener("playfieldchange",
+                                                 (e:EventPlayfieldChange) => this.playfield = e.playfield_)
   }
                                          
   run(gameId:string) {
@@ -91,6 +92,11 @@ class App {
     this.viewerSet(this.game.players.find(p => p.id == this.viewer?.id) ?? this.game.players[0])
   }
 
+  newHand() {
+    this.playfield = this.game.playfieldNewHand(this.playfield)
+    this.viewerSet(this.game.players.find(p => p.id == this.viewer?.id) ?? this.game.players[0])
+  }
+  
   cardSizeSet(width:number, height:number) {
     this.cardWidth = width
     this.cardHeight = height
@@ -529,6 +535,14 @@ function run(urlCards:string, urlCardBack:string) {
     }
   )
 
+  dom.demandById("hand-new").addEventListener(
+    "click",
+    () => {
+      app.newHand()
+      app.sync()
+    }
+  )
+  
   dom.withElement("game-type", HTMLSelectElement, (elGames) => {
     for (const game of app.games) {
       const opt = document.createElement("option")

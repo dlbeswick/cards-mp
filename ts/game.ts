@@ -888,6 +888,9 @@ export abstract class Game extends IdentifiedVar {
   }
   
   abstract playfield():Playfield
+  playfieldNewHand(playfieldOld:Playfield):Playfield {
+    return this.playfield()
+  }
 }
 
 export class GameGinRummy extends Game {
@@ -969,6 +972,11 @@ export class GamePoker extends Game {
                                       new SlotChip(3, "ante")])
       ]
     )
+  }
+  
+  playfieldNewHand(playfieldOld:Playfield):Playfield {
+    const pf = this.playfield()
+    return new Playfield(pf.containers, playfieldOld.containersChip)
   }
 }
 
