@@ -284,6 +284,17 @@ class App {
       console.debug("Unknown message", data)
     }
   }
+
+  serialize() {
+    return {
+      game: this.game.id(),
+      playfield: this.playfield.serialize()
+    }
+  }
+
+  restore(serialized:any) {
+    this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield))
+  }
 }
 
 let appGlobal:App
@@ -463,7 +474,6 @@ function makeUiPoker(playfield:Playfield, app:App) {
     })
   )
 
-
   root.add(playerSlots(player))
 }
 
@@ -571,6 +581,33 @@ function run(urlCards:string, urlCardBack:string) {
     app.viewerSet(app.viewerGet())
   })
   cardSizeSet()
+
+  dom.demandById("save").addEventListener(
+    "click",
+    () => {
+      const state = {
+        id: dom.demandById("peerjs-id", HTMLInputElement).value,
+        target: dom.demandById("peerjs-target", HTMLInputElement).value,
+        app: app.serialize()
+      }
+      
+      window.localStorage.setItem("state", JSON.stringify(state))
+    }
+  )
+
+  dom.demandById("load").addEventListener(
+    "click",
+    () => {
+      const state = window.localStorage.getItem("state")
+      if (state) {
+        const serialized = JSON.parse(state)
+        dom.demandById("peerjs-id", HTMLInputElement).value = serialized.id
+        dom.demandById("peerjs-target", HTMLInputElement).value = serialized.target
+        app.restore(serialized.app)
+        dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().id()
+      }
+    }
+  )
 
   app.run(dom.demandById("game-type", HTMLSelectElement).value)
 }
