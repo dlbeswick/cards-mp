@@ -96,8 +96,16 @@ body {
 	}
 }
 
-.slot-overlap-chip {
+.slot-overlap.narrow .card {
+	width: 2px;
+}
+
+.slot-overlap.slot-chip {
 	width: 80px;
+	
+	label {
+		background: #33dd33;
+	}
 }
 
 .slot-overlap .chip {

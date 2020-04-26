@@ -81,7 +81,7 @@ class App {
     return this.root
   }
   
-  newGame(idGame:string, playfield?:Playfield, viewer?:Player) {
+  newGame(idGame:string, playfield?:Playfield, viewerId?:string) {
     const game = this.games.find(g => g.id() == idGame)
     if (!game) {
       throw new Error("No such game " + idGame)
@@ -89,7 +89,11 @@ class App {
 
     this.game = game
     this.playfield = playfield ?? this.game.playfield()
-    this.viewerSet(viewer ?? this.game.players.find(p => p.id() == this.viewer?.id()) ?? this.game.players[0])
+    this.viewerSet(
+      this.game.players.find(p => p.id() == viewerId) ??
+        this.game.players.find(p => p.id() == this.viewer?.id()) ??
+        this.game.players[0]
+    )
   }
 
   newHand() {
@@ -294,8 +298,7 @@ class App {
   }
 
   restore(serialized:any) {
-    this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield),
-                 this.game.players.find(p => p.isId(serialized.viewer)))
+    this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield), serialized.viewer)
   }
 }
 
@@ -440,7 +443,8 @@ function makeUiPoker(playfield:Playfield, app:App) {
         new UIContainerFlex().with(cnt => {
           let uislotWaste = new UISlotSpread('waste-secret', app.selection, null, viewer, playfield, 0,
                                              app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                             app.cardHeightGet(), app.cardHeightGet()*1.5+'px', '100%')
+                                             app.cardHeightGet(), app.cardHeightGet()*1.5+'px', '100%',
+                                             ['slot', 'slot-overlap', 'narrow'])
           uislotWaste.init()
           uislotWaste.element.style.flexGrow = "1"
           cnt.add(uislotWaste)

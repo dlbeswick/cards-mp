@@ -612,6 +612,7 @@ export class UISlotChip extends UIActionable {
   protected children:UIChip[] = []
   private readonly cardWidth:number
   private readonly eventsSlot:dom.EventListeners
+  private readonly count:HTMLLabelElement
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
               playfield:Playfield, notifierSlot:NotifierSlot, idSlot:number, cardWidth:number) {
@@ -621,9 +622,12 @@ export class UISlotChip extends UIActionable {
     this.idSlot = idSlot
     this.cardWidth = cardWidth
 
+    this.count = document.createElement("label")
+    this.element.appendChild(this.count)
+    
     this.element.classList.add("slot")
     this.element.classList.add("slot-overlap")
-    this.element.classList.add("slot-overlap-chip")
+    this.element.classList.add("slot-chip")
 
     this.eventsSlot = new dom.EventListeners(notifierSlot.slot(this.idCnt, this.idSlot) as EventTarget)
     this.eventsSlot.add(
@@ -664,7 +668,8 @@ export class UISlotChip extends UIActionable {
       }
       --idx
     }
-    this.playfield = playfield_
+    this.playfield = playfield_ // not needed anymore -- remove
+    this.count.innerText = '฿' + this.children.map(ui => ui.chip.value).reduce((a,b) => a + b, 0)
   }
   
   destroy() {
