@@ -81,7 +81,7 @@ class App {
     return this.root
   }
   
-  newGame(idGame:string, playfield?:Playfield) {
+  newGame(idGame:string, playfield?:Playfield, viewer?:Player) {
     const game = this.games.find(g => g.id() == idGame)
     if (!game) {
       throw new Error("No such game " + idGame)
@@ -89,12 +89,12 @@ class App {
 
     this.game = game
     this.playfield = playfield ?? this.game.playfield()
-    this.viewerSet(this.game.players.find(p => p.id == this.viewer?.id) ?? this.game.players[0])
+    this.viewerSet(viewer ?? this.game.players.find(p => p.id() == this.viewer?.id()) ?? this.game.players[0])
   }
 
   newHand() {
     this.playfield = this.game.playfieldNewHand(this.playfield)
-    this.viewerSet(this.game.players.find(p => p.id == this.viewer?.id) ?? this.game.players[0])
+    this.viewerSet(this.viewer)
   }
   
   cardSizeSet(width:number, height:number) {
@@ -288,12 +288,14 @@ class App {
   serialize() {
     return {
       game: this.game.id(),
+      viewer: this.viewer.id(),
       playfield: this.playfield.serialize()
     }
   }
 
   restore(serialized:any) {
-    this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield))
+    this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield),
+                 this.game.players.find(p => p.isId(serialized.viewer)))
   }
 }
 
