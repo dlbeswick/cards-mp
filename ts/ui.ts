@@ -87,6 +87,17 @@ abstract class UIContainer extends UIElement {
       child.destroy()
     this.children = []
   }
+
+  with(f:(cnt:this) => void):this {
+    f(this)
+    return this
+  }
+}
+
+export class UIContainerDiv extends UIContainer {
+  constructor() {
+    super(document.createElement("div"))
+  }
 }
 
 export class UIContainerFlex extends UIContainer {
@@ -95,15 +106,10 @@ export class UIContainerFlex extends UIContainer {
     this.element.style.display = 'flex'
     if (grow)
       this.element.style.flexGrow = "1"
-    if (direction == undefined)
+    if (direction == 'aware')
       this.element.classList.add("flex")
     else
       this.element.style.flexDirection = direction
-  }
-
-  with(f:(cnt:UIContainerFlex) => void):this {
-    f(this)
-    return this
   }
 }
 
@@ -151,7 +157,7 @@ abstract class UIActionable extends UIElement {
     return this.owner == null || viewer == this.owner
   }
   
-  abstract onClick(e:MouseEvent):boolean
+  abstract onClick():boolean
 }
 
 /*
@@ -189,7 +195,7 @@ abstract class UISlotCard extends UIActionable {
 
   abstract change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void
   
-  onClick(e:MouseEvent) {
+  onClick() {
     this.selection.finalize(this.onAction.bind(this), UICard)
     return true
   }
@@ -412,7 +418,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     return this.children.flatMap(uis => uis.uiMovablesForSlots(slots))
   }
   
-  onClick(e:MouseEvent) {
+  onClick() {
     this.selection.finalize(this.onAction.bind(this), UICard)
     return true
   }
@@ -683,19 +689,21 @@ export class UISlotChip extends UIActionable {
     return this.children[this.children.length-1]
   }
   
-  onClick(e:MouseEvent) {
+  onClick() {
     if (this.selection.active())
       this.selection.finalize(this.onAction.bind(this), UIChip)
-    else
-      this.selection.select(this.children)
+    else {
+      const valueToSelect = this.top()?.chip.value
+      this.selection.select(this.children.filter(ui => ui.chip.value == valueToSelect))
+    }
     return true
   }
   
   protected onAction(selected:readonly UIChip[]) {
-    assert(selected.length, "Chips selection empty")
     assert(selected.every(ui => ui.uislot.slot() == selected[0].uislot.slot()), "Chip selection has different slots")
-    const chipsSrc = selected.map(ui => ui.chip)
     const slotSrc = selected[0].uislot.slot()
+    const toMove = selected
+    const chipsSrc = toMove.map(ui => ui.chip)
     const slotDst = this.slot()
     if (slotSrc !== slotDst) {
       const slotSrc_ = slotSrc.remove(chipsSrc)
@@ -738,7 +746,10 @@ export class UIChip extends UIMovable {
   }
 
   protected onClick() {
-    this.selection.select([this])
+    if (this.selection.active())
+      this.uislot.onClick()
+    else
+      this.selection.select([this])
   }
 }
 

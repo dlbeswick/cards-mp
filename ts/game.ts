@@ -952,7 +952,8 @@ export class GamePoker extends Game {
                                                     deck.map(c => new WorldCard(c, false)))])],
       [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
        new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),
-       new ContainerSlotChip("ante", [new SlotChip(0, "ante")])
+       new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
+                                      new SlotChip(3, "ante")])
       ]
     )
   }

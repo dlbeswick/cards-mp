@@ -6,7 +6,7 @@ import {
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Vector } from "./math.js"
-import { Selection, UICard, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
+import { Selection, UICard, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
 window.onerror = errorHandler
 
@@ -391,54 +391,68 @@ function makeUiPoker(playfield:Playfield, app:App) {
   assert(opponent)
 
   function playerSlots(owner:Player) {
-    return new UIContainerFlex().with(cnt => {
+    return new UIContainerFlex('aware').with(cnt => {
       cnt.add(
         new UISlotSpread(owner.idCnts[0], app.selection, owner, viewer, playfield, 0,
                          app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
                          app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
       )
       
-      for (let idx=0; idx < 4; ++idx) {
-        cnt.add(
-          new UISlotChip(owner.idCnts[1], app.selection, owner, viewer, playfield, app.notifierSlot, idx,
-                         app.cardWidthGet()).init()
-        )
-      }
+      cnt.add(
+        new UIContainerFlex().with(cnt => {
+          for (let idx=0; idx < 4; ++idx) {
+            cnt.add(
+              new UISlotChip(owner.idCnts[1], app.selection, owner, viewer, playfield, app.notifierSlot, idx,
+                             app.cardWidthGet()).init()
+            )
+          }
+        })
+      )
     })
   }
 
   root.add(playerSlots(opponent))
   
   root.add(
-    new UIContainerFlex().with(cnt => {
-  
-      let uislotWaste = new UISlotSpread('waste-secret', app.selection, null, viewer, playfield, 0,
+    new UIContainerFlex('aware').with(cnt => {
+
+      cnt.add(
+        new UIContainerFlex().with(cnt => {
+          let uislotWaste = new UISlotSpread('waste-secret', app.selection, null, viewer, playfield, 0,
+                                             app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                                             app.cardHeightGet(), app.cardHeightGet()*1.5+'px', '100%')
+          uislotWaste.init()
+          uislotWaste.element.style.flexGrow = "1"
+          cnt.add(uislotWaste)
+          
+          uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0,
                                          app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
                                          app.cardHeightGet(), app.cardHeightGet()*1.5+'px', '100%')
-      uislotWaste.init()
-      uislotWaste.element.style.flexGrow = "1"
-      cnt.add(uislotWaste)
-      
-      uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0,
-                                     app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                     app.cardHeightGet(), app.cardHeightGet()*1.5+'px', '100%')
-      uislotWaste.init()
-      uislotWaste.element.style.flexGrow = "1"
-      cnt.add(uislotWaste)
-  
-      cnt.add(
-        new UISlotChip('ante', app.selection, null, viewer, playfield, app.notifierSlot, 0, app.cardWidthGet()).init()
+          uislotWaste.init()
+          uislotWaste.element.style.flexGrow = "1"
+          cnt.add(uislotWaste)
+        
+          const divStock = new UIContainerFlex(undefined, true)
+          const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
+          divStockSpacer.style.flexGrow = "1"
+          divStock.element.appendChild(divStockSpacer)
+          const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, '', 0, app.notifierSlot,
+                                               app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
+          uislotStock.init()
+          divStock.add(uislotStock)
+          cnt.add(divStock)
+        })
       )
-      
-      const divStock = new UIContainerFlex(undefined, true)
-      const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
-      divStockSpacer.style.flexGrow = "1"
-      divStock.element.appendChild(divStockSpacer)
-      const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, '', 0, app.notifierSlot,
-                                           app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
-      uislotStock.init()
-      divStock.add(uislotStock)
-      cnt.add(divStock)
+
+      cnt.add(
+        new UIContainerFlex().with(cnt => {
+          for (let i=0; i<4; ++i)
+            cnt.add(
+              new UISlotChip('ante', app.selection, null, viewer, playfield, app.notifierSlot, i,
+                             app.cardWidthGet()).init()
+            )
+        })
+      )
     })
   )
 
