@@ -414,7 +414,7 @@ function makeUiPoker(playfield:Playfield, app:App) {
   root.add(playerSlots(opponent))
   
   root.add(
-    new UIContainerFlex('aware').with(cnt => {
+    new UIContainerDiv().with(cnt => {
 
       cnt.add(
         new UIContainerFlex().with(cnt => {
