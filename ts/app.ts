@@ -393,12 +393,6 @@ function makeUiPoker(playfield:Playfield, app:App) {
   function playerSlots(owner:Player) {
     return new UIContainerFlex('aware').with(cnt => {
       cnt.add(
-        new UISlotSpread(owner.idCnts[0], app.selection, owner, viewer, playfield, 0,
-                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                         app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
-      )
-      
-      cnt.add(
         new UIContainerFlex().with(cnt => {
           for (let idx=0; idx < 4; ++idx) {
             cnt.add(
@@ -407,6 +401,12 @@ function makeUiPoker(playfield:Playfield, app:App) {
             )
           }
         })
+      )
+      
+      cnt.add(
+        new UISlotSpread(owner.idCnts[0], app.selection, owner, viewer, playfield, 0,
+                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                         app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
       )
     })
   }

@@ -937,10 +937,10 @@ export class GamePoker extends Game {
     const deck = shuffled(deck52())
 
     const chips = (id:string, base:number) => 
-      [new SlotChip(0, id),
-       new SlotChip(1, id, range(5).map((_,i) => new Chip(i+256+base, 100))),
+      [new SlotChip(0, id, range(3).map((_,i) => new Chip(i+512+base, 100))),
+       new SlotChip(1, id, range(5).map((_,i) => new Chip(i+256+base, 50))),
        new SlotChip(2, id, range(10).map((_,i) => new Chip(i+128+base,25))),
-       new SlotChip(3, id, range(25).map((_,i) => new Chip(i+base, 10)))
+       new SlotChip(3, id, range(20).map((_,i) => new Chip(i+base, 10)))
        ]
     
     return new Playfield(

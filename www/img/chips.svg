@@ -29,12 +29,12 @@
 
 	<g id="50">
 	  <use xlink:href="#chip" fill="yellow" stroke="black"/>
-	  <text x="8" y="34" fill="white" stroke="black" stroke-width=".5">50</text>
+	  <text x="8" y="34" fill="black" stroke="black" stroke-width=".5">50</text>
 	</g>
 
 	<g id="100" font-size="20" font-family="Arial">
-	  <use xlink:href="#chip" fill="black" stroke="white"/>
-	  <text x="8" y="31" fill="white" stroke="black" stroke-width=".5">100</text>
+	  <use xlink:href="#chip" fill="black" stroke="red"/>
+	  <text x="8" y="31" fill="red" stroke="black" stroke-width=".5">100</text>
 	</g>
   </g>
 </svg>
