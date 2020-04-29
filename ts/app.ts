@@ -319,26 +319,22 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
   uislotOpp.init()
   root.add(uislotOpp)
 
-  const divPlay = new UIContainerFlex()
-  
-  const uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                       app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
-                                       app.cardHeightGet()*1.5+'px', '100%')
-  uislotWaste.init()
-  uislotWaste.element.style.flexGrow = "1"
-  divPlay.add(uislotWaste)
-  
-  const divStock = new UIContainerFlex('column', true)
-  const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
-  divStockSpacer.style.flexGrow = "1"
-  divStock.element.appendChild(divStockSpacer)
-  const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, '', 0, app.notifierSlot,
-                                       app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
-  uislotStock.init()
-  divStock.add(uislotStock)
-  divPlay.add(divStock)
-
-  root.add(divPlay)
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      
+      const uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
+                                           app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                                           app.cardHeightGet()*1.5+'px', '100%')
+      uislotWaste.init()
+      uislotWaste.element.style.flexGrow = "1"
+      cnt.add(uislotWaste)
+      
+      const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
+                                           app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
+      uislotStock.init()
+      cnt.add(uislotStock)
+    })
+  )
   
   const uislotBottom = new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield,
                                         0, app.notifierSlot, app.urlCards, app.urlCardBack,
@@ -399,7 +395,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
   uislotBottom.init()
   root.add(uislotBottom)
 
-  const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, '', 0, app.notifierSlot,
+  const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
                                        app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
   uislotStock.init()
   uislotStock.element.style.marginTop = 'auto' // tbd: encode in UIElement
@@ -462,7 +458,7 @@ function makeUiPoker(playfield:Playfield, app:App) {
           const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
           divStockSpacer.style.flexGrow = "1"
           divStock.element.appendChild(divStockSpacer)
-          const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, '', 0, app.notifierSlot,
+          const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
                                                app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
           uislotStock.init()
           divStock.add(uislotStock)

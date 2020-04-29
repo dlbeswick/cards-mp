@@ -7,18 +7,46 @@ $on-laptop:        800px !default;
   }
 }
 
+@mixin media-desktop() {
+	@media screen and (min-width: $on-laptop) {
+		@content;
+	}
+}
+
+@mixin media-mobile() {
+	@media screen and (max-width: $on-laptop) {
+		@content;
+	}
+}
+
 // This class is left-to-right on desktop and top-to-bottom on mobile.
 .flex {
 	display: flex;
+	direction: ltr;
 }
 
 // This class is right-to-left on desktop but top-to-bottom on mobile.
 .flex-reverse {
 	display: flex;
+	direction: ltr;
 	flex-direction: row-reverse;
 }
 
-@include media-query($on-palm) {
+// This class is always top-to-bottom.
+.flex-col {
+	display: flex;
+	direction: ltr;
+	flex-direction: column;
+}
+
+// This class is always left-to-right.
+.flex-row {
+	display: flex;
+	direction: ltr;
+	flex-direction: row;
+}
+
+@include media-mobile {
 	.flex {
 		flex-direction: column;
 	}
@@ -43,29 +71,44 @@ $on-laptop:        800px !default;
 
 body {
 	margin: 0px;
+	background:black;
 }
 
 #ui {
 	input {
+		font-size: large;
 		width: 5em;
+	}
+
+	button {
+		font-size: large;
+	}
+	
+	> div {
+		margin: 7px 5px 7px 5px;
 	}
 }
 
-#ui > div {
-	margin: 7px 5px 7px 5px;
-}
-
-#ui input {
-	font-size: large;
-}
-
-#ui button {
-	font-size: large;
+#buttons {
+	flex-wrap: wrap;
+	flex-grow: 1;
+	label {
+		display: block;
+		padding: 10px;
+	}
 }
 
 #buttons > div {
 	display: inline-block;
-	margin-bottom: 10px;
+	padding: 10px;
+
+	@include media-desktop {
+		border-left: 1px solid;
+	}
+
+	@include media-mobile {
+		border-top: 1px solid;
+	}
 }
 
 #players {
@@ -144,8 +187,15 @@ body {
 
 .slot-single {
 	padding-bottom: 0;
-	align-self: flex-end;
-						
+
+	// Make sure that slot aligns with the bottom of any horizontal card slots it's next to. This is usually more
+	// convenient for users because their main card slot is usually to the bottom.
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    direction: ltr;
+    justify-content: flex-end;
+  						
 	label {
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
@@ -203,4 +253,9 @@ body {
 	font-size: large;
 	box-shadow: inset 1px 1px 3px #777;
 	background: #bbb
+}
+
+#playfield-end {
+	background-image: linear-gradient(#228833,black);
+	height: 25px;
 }

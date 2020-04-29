@@ -65,6 +65,7 @@ export class UIContainerFlex extends UIContainer {
   constructor(direction:string|undefined='row', grow=false) {
     super(document.createElement("div"))
     this.element.style.display = 'flex'
+    this.element.style.direction = 'ltr'
     if (grow)
       this.element.style.flexGrow = "1"
     if (direction == 'aware')
@@ -174,6 +175,10 @@ abstract class UISlotCard extends UIActionable {
 
   abstract change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void
   
+  uiMovablesForSlots(slots:Slot[]):UIMovable[] {
+    return Array.from(slots).some(s => this.slot().is(s)) ? this.children : []
+  }
+  
   onClick() {
     this.selection.finalize(this.onAction.bind(this), UICard)
     return true
@@ -236,12 +241,11 @@ abstract class UISlotCard extends UIActionable {
 */
 export class UISlotSingle extends UISlotCard {
   readonly count:HTMLElement
-  private readonly height:string
-  private cards:HTMLElement
   private readonly cardWidth:number
   private readonly cardHeight:number
+  private elCard:HTMLElement;
   
-  constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield, height:string,
+  constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield,
               idSlot:number, notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, cardWidth:number,
               cardHeight:number, actionLongPress='flip') {
     super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, idSlot, notifierSlot,
@@ -250,37 +254,38 @@ export class UISlotSingle extends UISlotCard {
     this.element.style.width = cardWidth.toString()
     this.count = document.createElement("label")
     this.element.appendChild(this.count)
-    this.height = height
     
-    this.cards = this.makeCardsDiv(this.height)
-    this.element.appendChild(this.cards)
     this.cardWidth = cardWidth
     this.cardHeight = cardHeight
+    this.elCard = this.spaceMake()
+    this.element.appendChild(this.elCard)
   }
 
-  uiMovablesForSlots(slots:Slot[]):UIMovable[] {
-    return Array.from(slots).some(s => this.slot().is(s)) ? [this.children[0]] : []
+  private spaceMake() {
+    const space = document.createElement("div")
+    space.style.width = this.cardWidth+'px'
+    space.style.height = this.cardHeight+'px'
+    return space
   }
   
   change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void {
-    const cards = this.makeCardsDiv(this.height)
-    this.children = []
-    if (!slot_.isEmpty()) {
-      this.children[0] = new UICard(slot_.top(), this, false, this.viewer, this.selection, playfield_,
-                                    this.notifierSlot, this.urlCards, this.urlCardBack, this.cardWidth, this.cardHeight)
-      this.children[0].init()
-      cards.appendChild(this.children[0].element)
+    if (slot_.isEmpty()) {
+      const space = this.spaceMake()
+      this.elCard.replaceWith(space)
+      this.elCard = space
+      this.children = []
+    } else {
+      const card = new UICard(
+        slot_.top(), this, false, this.viewer, this.selection, playfield_, this.notifierSlot, this.urlCards,
+        this.urlCardBack, this.cardWidth, this.cardHeight
+      ).init()
+      this.elCard.replaceWith(card.element)
+      this.elCard = card.element
+      this.children[0] = card
     }
-    this.cards.replaceWith(cards)
-    this.cards = cards
+    
     this.count.innerText = slot_.length().toString()
     this.playfield = playfield_
-  }
-
-  private makeCardsDiv(height:string):HTMLElement {
-    const result = document.createElement("div")
-    result.style.minHeight = height
-    return result
   }
 }
 
@@ -313,10 +318,6 @@ export class UISlotSpread extends UISlotCard {
     this.cardHeight = cardHeight
   }
 
-  uiMovablesForSlots(slots:Slot[]):UIMovable[] {
-    return slots.some(s => this.slot().is(s)) ? this.children : []
-  }
-  
   change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void {
     const cards_ = Array.from(slot_)
 

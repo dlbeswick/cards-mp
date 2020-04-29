@@ -15,48 +15,46 @@
         <script type="module" src="js/app.js"></script>
 		<div id="error" class="error"></div>
 		<div id="ui" class="flex">
-		  <div id="buttons">
-			<div>
-			  <select id="game-type">
-			  </select>
-			  <button id="save" type="button">Save</button>
-			  <button id="load" type="button">Load</button>
-			  <button id="game-new" type="button">New game</button>
-			</div>
-			<div>
-			  <button id="player-next" type="button">Switch Player</button>
-			  <span id="player">Player 1</span>
-			</div>
-			<div>
-			  <button id="reveal-all" type="button">Reveal all</button>
-			</div>
-			<div>
-			  <label>Cards <select id="card-size">
-				  <option value="[56, 82]">Small</option>
-				  <option value="[74, 112]">Normal</option>
-				  <option value="[82, 120]">Large</option>
-				</select>
-			  </label>
-			</div>
+		  <div id="buttons" class="flex">
 			<div>
 			  <label>My id: <input id="peerjs-id" /></label>
 			  <button id="id-get" type="button">Register id</button>
 			  <div id="peerjs-status">Unregistered</div>
 			</div>
 			<div>
+			  <select id="game-type"></select>
 			  <label>Connect to: <input id="peerjs-target" /></label>
 			  <button id="connect" type="button">Connect</button>
 			  <button id="sync" type="button">Sync</button>
-			  <button id="hand-new" type="button">New hand</button>
+			  <button id="game-new" type="button">New game</button>
 			</div>
-		  </div>
-		  <div>
-			<label>Player list
-			  <table id="players">
-			  </table>
-			</label>
+			<div>
+			  <button id="save" type="button">Save</button>
+			  <button id="load" type="button">Load</button>
+			</div>
+			<div>
+			  <button id="player-next" type="button">Switch Player</button>
+			  <span id="player">Player 1</span>
+			  <label>Player list
+				<table id="players">
+				</table>
+			  </label>
+			</div>
+			<div>
+			  <button id="hand-new" type="button">New hand</button>
+			  <button id="reveal-all" type="button">Reveal all</button>
+			  <div>
+				<label>Cards <select id="card-size">
+					<option value="[56, 82]">Small</option>
+					<option value="[74, 112]">Normal</option>
+					<option value="[82, 120]">Large</option>
+				  </select>
+				</label>
+			  </div>
+			</div>
 		  </div>
 		</div>
 		<div id="playfield"></div>
+		<div id="playfield-end"></div>
     </body>
 </html>
