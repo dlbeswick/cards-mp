@@ -315,7 +315,7 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
   
   const uislotOpp = new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
                                      app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                     app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%')
+                                     app.cardHeightGet(), '100%')
   uislotOpp.init()
   root.add(uislotOpp)
 
@@ -324,7 +324,7 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
       
       const uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
                                            app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
-                                           app.cardHeightGet()*1.5+'px', '100%')
+                                           '100%')
       uislotWaste.init()
       uislotWaste.element.style.flexGrow = "1"
       cnt.add(uislotWaste)
@@ -339,7 +339,7 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
   const uislotBottom = new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield,
                                         0, app.notifierSlot, app.urlCards, app.urlCardBack,
                                         app.cardWidthGet(), app.cardHeightGet(),
-                                        `${app.cardHeightGet()+25}px`, '100%')
+                                        '100%')
   uislotBottom.init()
   root.add(uislotBottom)
 }
@@ -354,7 +354,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
   
   const uislotTop = new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
                                      app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                     app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%')
+                                     app.cardHeightGet(), '100%')
   uislotTop.init()
   root.add(uislotTop)
 
@@ -370,8 +370,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
   
   const uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
                                        app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
-                                       (app.cardHeightGet()+25)+'px', '100%', undefined,
-                                       undefined, 'flip', 'all-proceeding')
+                                       '100%', undefined, undefined, 'flip', 'all-proceeding')
   uislotWaste.init()
   uislotWaste.element.style.flexGrow = "1" // tbd: encode in UIElement
   divPlay.add(uislotWaste)
@@ -391,14 +390,13 @@ function makeUiDummy(playfield:Playfield, app:App) {
   
   const uislotBottom = new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
                                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                        app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%')
+                                        app.cardHeightGet(), '100%')
   uislotBottom.init()
   root.add(uislotBottom)
 
   const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
                                        app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
   uislotStock.init()
-  uislotStock.element.style.marginTop = 'auto' // tbd: encode in UIElement
   root.add(uislotStock)
 }
 
@@ -413,10 +411,12 @@ function makeUiPlayerChips(app:App, owner:Player, viewer:Player, playfield:Playf
   })
 }
 
-function makeUiPlayerCards(app:App, cntId:string, owner:Player, viewer:Player, playfield:Playfield, idSlot=0) {
+function makeUiPlayerCards(app:App, cntId:string, owner:Player, viewer:Player, playfield:Playfield, idSlot=0,
+                           classes:string[]=[]) {
+  
   return new UISlotSpread(cntId, app.selection, owner, viewer, playfield, idSlot,
                           app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                          app.cardHeightGet(), `${app.cardHeightGet()+25}px`, '100%').init()
+                          app.cardHeightGet(), '100%', ['slot', 'slot-overlap'].concat(classes)).init()
 }
 
 function makeUiPoker(playfield:Playfield, app:App) {
@@ -441,28 +441,22 @@ function makeUiPoker(playfield:Playfield, app:App) {
         new UIContainerFlex().with(cnt => {
           let uislotWaste = new UISlotSpread('waste-secret', app.selection, null, viewer, playfield, 0,
                                              app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                             app.cardHeightGet(), app.cardHeightGet()*1.5+'px', '100%',
-                                             ['slot', 'slot-overlap', 'narrow'])
+                                             app.cardHeightGet(), '100%', ['slot', 'slot-overlap', 'narrow'])
           uislotWaste.init()
           uislotWaste.element.style.flexGrow = "1"
           cnt.add(uislotWaste)
           
           uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0,
                                          app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                         app.cardHeightGet(), app.cardHeightGet()*1.5+'px', '100%')
+                                         app.cardHeightGet(), '100%')
           uislotWaste.init()
           uislotWaste.element.style.flexGrow = "1"
           cnt.add(uislotWaste)
         
-          const divStock = new UIContainerFlex(undefined, true)
-          const divStockSpacer = document.createElement("div") // tbd: make spacer UIElement
-          divStockSpacer.style.flexGrow = "1"
-          divStock.element.appendChild(divStockSpacer)
           const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
                                                app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
           uislotStock.init()
-          divStock.add(uislotStock)
-          cnt.add(divStock)
+          cnt.add(uislotStock)
         })
       )
     })
@@ -493,23 +487,42 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
   const opponent = app.gameGet().players.find(p => p.idCnts[0] && p != player)
   assert(opponent)
 
-  root.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
-  
   root.add(
-    new UIContainerFlex().with(cnt => {
-      for (let i=0; i<3; ++i)
-        cnt.add(makeUiPlayerCards(app, opponent.idCnts[0] + "-show", opponent, viewer, playfield, i))
+    new UIContainerFlex('aware').with(cnt => {
+      cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
+      cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
     })
   )
   
   root.add(
     new UIContainerFlex().with(cnt => {
       for (let i=0; i<3; ++i)
-        cnt.add(makeUiPlayerCards(app, player.idCnts[0] + "-show", player, viewer, playfield, i))
+        cnt.add(makeUiPlayerCards(app, opponent.idCnts[0] + "-show", opponent, viewer, playfield, i, ['aware']))
     })
   )
   
-  root.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      for (let i=0; i<3; ++i)
+        cnt.add(makeUiPlayerCards(app, player.idCnts[0] + "-show", player, viewer, playfield, i, ['aware']))
+    })
+  )
+  
+  root.add(
+    new UIContainerFlex('aware').with(cnt => {
+      cnt.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
+      cnt.add(
+        new UIContainerFlex().with(cnt => {
+          for (let i=0; i<4; ++i)
+            cnt.add(
+              new UISlotChip('ante', app.selection, null, viewer, playfield, app.notifierSlot, i,
+                             app.cardWidthGet()).init()
+            )
+        })
+      )
+      cnt.add(makeUiPlayerChips(app, player, viewer, playfield))
+    })
+  )
 }
 
 function run(urlCards:string, urlCardBack:string) {

@@ -251,7 +251,7 @@ export class UISlotSingle extends UISlotCard {
     super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, idSlot, notifierSlot,
           urlCards, urlCardBack, actionLongPress)
     this.element.classList.add("slot-single")
-    this.element.style.width = cardWidth.toString()
+    this.element.style.width = cardWidth.toString()+'px'
     this.count = document.createElement("label")
     this.element.appendChild(this.count)
     
@@ -300,8 +300,8 @@ export class UISlotSpread extends UISlotCard {
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield, idSlot:number,
               notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, cardWidth:number, cardHeight:number,
-              minHeight:string, width?:string, classesSlot?:string[],
-              classesCard?:string[], actionLongPress='flip', selectionMode='single') {
+              width?:string, classesSlot?:string[], classesCard?:string[], actionLongPress='flip',
+              selectionMode='single') {
     
     super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, idSlot, notifierSlot, urlCards,
           urlCardBack, actionLongPress, selectionMode)
@@ -310,7 +310,7 @@ export class UISlotSpread extends UISlotCard {
     this.classesCard = classesCard
     if (width)
       this.element.style.width = width
-    this.element.style.minHeight = minHeight
+    this.element.style.minHeight = `${cardHeight+25}px`
     this.element.classList.add(...classesSlot)
     this.containerEl = document.createElement("div")
     this.element.appendChild(this.containerEl)
@@ -443,7 +443,6 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
           this.urlCardBack,
           this.cardWidth,
           this.cardHeight,
-          '0px',
           `${this.cardWidth}px`,
           ['slot', 'slot-overlap-vert'],
           undefined,

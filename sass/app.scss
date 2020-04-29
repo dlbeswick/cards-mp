@@ -101,14 +101,8 @@ body {
 #buttons > div {
 	display: inline-block;
 	padding: 10px;
-
-	@include media-desktop {
-		border-left: 1px solid;
-	}
-
-	@include media-mobile {
-		border-top: 1px solid;
-	}
+	box-shadow: inset 1px 1px 1px #888888;
+	background: #aaaaaa;
 }
 
 #players {
@@ -139,16 +133,20 @@ body {
 	min-height: 125px;
 }
 
-.slot-overlap {
+@mixin slot-overlap {
 	// Increase right padding by reverse of largest-size card width - overlap width, so cards wrap appropriately.
 	padding-right: 50px;
+	
+	.card {
+		width: 25px;
+		img {
+			box-shadow: -2px 0px 1px 0px rgba(0,0,0,0.1);
+		}
+	}
 }
 
-.slot-overlap .card {
-	width: 25px;
-	img {
-		box-shadow: -2px 0px 1px 0px rgba(0,0,0,0.1);
-	}
+.slot-overlap {
+	@include slot-overlap
 }
 
 .slot-overlap.narrow .card {
@@ -167,7 +165,7 @@ body {
 	}
 }
 
-.slot-overlap-vert  {
+@mixin slot-overlap-vert {
 	box-sizing: content-box;
 	vertical-align: top;
 	padding-bottom: 125px;
@@ -182,11 +180,22 @@ body {
 	}
 }
 
+.slot-overlap-vert  {
+	@include slot-overlap-vert
+}
+
 .slot-overlap.aware {
+	@include media-mobile {
+		@include slot-overlap-vert
+	}
+	@include media-desktop {
+		@include slot-overlap
+	}
 }
 
 .slot-single {
 	padding-bottom: 0;
+	box-sizing: content-box;
 
 	// Make sure that slot aligns with the bottom of any horizontal card slots it's next to. This is usually more
 	// convenient for users because their main card slot is usually to the bottom.
