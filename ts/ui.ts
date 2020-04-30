@@ -726,8 +726,8 @@ export class UIChip extends UIMovable {
     this.element.classList.add("chip")
 
     this.img = document.createElement("img")
-    this.img.width = cardWidth
-    this.img.height = cardWidth
+    this.img.width = cardWidth * 0.75
+    this.img.height = cardWidth * 0.75
     this.img.src = "img/chips.svg#" + this.chip.value
     this.element.appendChild(this.img)
   }
