@@ -951,8 +951,8 @@ export class GamePoker extends Game {
 
     const chips = (id:string, base:number) => 
       [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+512+base, 100))),
-       new SlotChip(1, id, array.range(5).map((_,i) => new Chip(i+256+base, 50))),
-       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,25))),
+       new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+256+base, 50))),
+       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,20))),
        new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+base, 10)))
        ]
     
@@ -985,8 +985,8 @@ export class GamePokerChinese extends Game {
 
     const chips = (id:string, base:number) => 
       [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+512+base, 100))),
-       new SlotChip(1, id, array.range(5).map((_,i) => new Chip(i+256+base, 50))),
-       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,25))),
+       new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+256+base, 50))),
+       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,20))),
        new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+base, 10)))
        ]
     

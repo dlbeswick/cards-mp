@@ -22,8 +22,13 @@
 	  <text x="8" y="34" fill="black" stroke="white" stroke-width=".5">10</text>
 	</g>
 	
+	<g id="20">
+	  <use xlink:href="#chip" fill="turquoise" stroke="black"/>
+	  <text x="8" y="34" fill="black" stroke="black" stroke-width=".5">20</text>
+	</g>
+	
 	<g id="25">
-	  <use xlink:href="#chip" fill="green" stroke="black"/>
+	  <use xlink:href="#chip" fill="lawngreen" stroke="black"/>
 	  <text x="8" y="34" fill="black" stroke="black" stroke-width=".5">25</text>
 	</g>
 
