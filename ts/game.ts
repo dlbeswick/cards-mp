@@ -487,13 +487,14 @@ function newEventTarget() {
 
 type FuncSlotUpdatePre<S extends Slot> = (updates:UpdateSlot<S>[], localAction:boolean) => any
 type FuncSlotUpdatePost = (updates:UpdateSlot<Slot>[], result:any, localAction:boolean) => void
-type ResultPreSlotUpdate = [FuncSlotUpdatePost, any][]
+type ResultPreSlotUpdate = any
 
 export class NotifierSlot {
   readonly playfield:EventTargetNotifierSlot = newEventTarget()
   private readonly events:Map<string, EventTargetNotifierSlot> = new Map()
-  private readonly slotUpdates:[FuncSlotUpdatePre<SlotCard>, FuncSlotUpdatePost][] = []
-  private readonly slotUpdatesChip:[FuncSlotUpdatePre<SlotChip>, FuncSlotUpdatePost][] = []
+  private readonly slotUpdates:FuncSlotUpdatePre<SlotCard>[] = []
+  private readonly slotUpdatesChip:FuncSlotUpdatePre<SlotChip>[] = []
+  private readonly postSlotUpdates:FuncSlotUpdatePost[] = []
 
   container(idCnt:string) {
     let result = this.events.get(idCnt)
@@ -514,38 +515,32 @@ export class NotifierSlot {
     return result
   }
 
-  registerSlotUpdate(funcPre: FuncSlotUpdatePre<SlotCard>,funcPost: FuncSlotUpdatePost) {
-    this.slotUpdates.push([funcPre, funcPost])
+  registerSlotUpdate(funcPre: FuncSlotUpdatePre<SlotCard>) {
+    this.slotUpdates.push(funcPre)
   }
   
-  registerSlotUpdateChip(funcPre: FuncSlotUpdatePre<SlotChip>,funcPost: FuncSlotUpdatePost) {
-    this.slotUpdatesChip.push([funcPre, funcPost])
-  }
-  
-  private preSlotUpdateCard(updates:UpdateSlot<SlotCard>[], localAction:boolean):ResultPreSlotUpdate {
-    return this.slotUpdates.map(([pre, post]) => [post, pre(updates, localAction)])
+  registerSlotUpdateChip(funcPre: FuncSlotUpdatePre<SlotChip>) {
+    this.slotUpdatesChip.push(funcPre)
   }
 
-  private preSlotUpdateChip(updates:UpdateSlot<SlotChip>[], localAction:boolean):ResultPreSlotUpdate {
-    return this.slotUpdatesChip.map(([pre, post]) => [post, pre(updates, localAction)])
-  }
-  
-  private postSlotUpdate(updates:UpdateSlot<Slot>[], results:ResultPreSlotUpdate, localAction:boolean) {
-    for (const [post, result] of results) {
-      post(updates, result, localAction)
-    }
+  registerPostSlotUpdate(func: FuncSlotUpdatePost) {
+    this.postSlotUpdates.push(func)
   }
 
-  slotsUpdateCard(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotCard>[], send=true):Playfield {
-    return this.slotsUpdate(playfield, playfield_, updates, send, this.preSlotUpdateCard(updates, send))
+  slotsUpdateCard(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotCard>[],
+                  localAction=true):Playfield {
+    return this.slotsUpdate(playfield, playfield_, updates, localAction,
+                            this.slotUpdates.map(f => f(updates, localAction)))
   }
   
-  slotsUpdateChip(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotChip>[], send=true):Playfield {
-    return this.slotsUpdate(playfield, playfield_, updates, send, this.preSlotUpdateChip(updates, send))
+  slotsUpdateChip(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotChip>[],
+                  localAction=true):Playfield {
+    return this.slotsUpdate(playfield, playfield_, updates, localAction,
+                            this.slotUpdatesChip.map(f => f(updates, localAction)))
   }
   
   private slotsUpdate<S extends Slot>(
-    playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<S>[], send:boolean,
+    playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<S>[], localAction:boolean,
     preSlotChangeInfo:ResultPreSlotUpdate
   ):Playfield {
     const cntChanged:Map<string, UpdateSlot<S>[]> = new Map()
@@ -567,8 +562,10 @@ export class NotifierSlot {
         new EventContainerChange(playfield, playfield_, idCnt, updates)
       )
     }
-    
-    this.postSlotUpdate(updates, preSlotChangeInfo, send)
+
+    for (const result of preSlotChangeInfo)
+      for (const f of this.postSlotUpdates)
+        f(updates, result, localAction)
     
     this.playfield.dispatchEvent(new EventPlayfieldChange(playfield, playfield_))
     
@@ -656,21 +653,19 @@ export class Playfield {
   withUpdateCard(updates:UpdateSlot<SlotCard>[]):Playfield {
     assertf(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
-    let containers_ = this.containers
-    for (let update of updates) {
-      containers_ = containers_.map(cnt => cnt.update(update))
-    }
-    return new Playfield(containers_, this.containersChip)
+    return new Playfield(
+      updates.reduce((cnts, update) => cnts.map(cnt => cnt.update(update)), this.containers),
+      this.containersChip
+    )
   }
   
   withUpdateChip(updates:UpdateSlot<SlotChip>[]):Playfield {
     assertf(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
-    let containers_ = this.containersChip
-    for (let update of updates) {
-      containers_ = containers_.map(cnt => cnt.update(update))
-    }
-    return new Playfield(this.containers, containers_)
+    return new Playfield(
+      this.containers,
+      updates.reduce((cnts, update) => cnts.map(cnt => cnt.update(update)), this.containersChip)
+    )
   }
 }
 

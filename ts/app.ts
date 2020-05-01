@@ -67,8 +67,9 @@ class App {
   }
 
   init() {
-    this.notifierSlot.registerSlotUpdate(this.preSlotUpdateCard.bind(this), this.postSlotUpdate.bind(this))
-    this.notifierSlot.registerSlotUpdateChip(this.preSlotUpdateChip.bind(this), this.postSlotUpdate.bind(this))
+    this.notifierSlot.registerSlotUpdate(this.preSlotUpdateCard.bind(this))
+    this.notifierSlot.registerSlotUpdateChip(this.preSlotUpdateChip.bind(this))
+    this.notifierSlot.registerPostSlotUpdate(this.postSlotUpdate.bind(this))
     this.notifierSlot.playfield.addEventListener("playfieldchange",
                                                  (e:EventPlayfieldChange) => this.playfield = e.playfield_)
   }
