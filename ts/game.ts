@@ -522,18 +522,57 @@ export class NotifierSlot {
     this.slotUpdatesChip.push([funcPre, funcPost])
   }
   
-  preSlotUpdateCard(updates:UpdateSlot<SlotCard>[], localAction:boolean):ResultPreSlotUpdate {
+  private preSlotUpdateCard(updates:UpdateSlot<SlotCard>[], localAction:boolean):ResultPreSlotUpdate {
     return this.slotUpdates.map(([pre, post]) => [post, pre(updates, localAction)])
   }
 
-  preSlotUpdateChip(updates:UpdateSlot<SlotChip>[], localAction:boolean):ResultPreSlotUpdate {
+  private preSlotUpdateChip(updates:UpdateSlot<SlotChip>[], localAction:boolean):ResultPreSlotUpdate {
     return this.slotUpdatesChip.map(([pre, post]) => [post, pre(updates, localAction)])
   }
   
-  postSlotUpdate(updates:UpdateSlot<Slot>[], results:ResultPreSlotUpdate, localAction:boolean) {
+  private postSlotUpdate(updates:UpdateSlot<Slot>[], results:ResultPreSlotUpdate, localAction:boolean) {
     for (const [post, result] of results) {
       post(updates, result, localAction)
     }
+  }
+
+  slotsUpdateCard(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotCard>[], send=true):Playfield {
+    return this.slotsUpdate(playfield, playfield_, updates, send, this.preSlotUpdateCard(updates, send))
+  }
+  
+  slotsUpdateChip(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotChip>[], send=true):Playfield {
+    return this.slotsUpdate(playfield, playfield_, updates, send, this.preSlotUpdateChip(updates, send))
+  }
+  
+  private slotsUpdate<S extends Slot>(
+    playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<S>[], send:boolean,
+    preSlotChangeInfo:ResultPreSlotUpdate
+  ):Playfield {
+    const cntChanged:Map<string, UpdateSlot<S>[]> = new Map()
+    for (const update of updates) {
+      const [slot, slot_] = update
+      
+      if (!cntChanged.has(slot_.idCnt)) {
+        cntChanged.set(slot_.idCnt, [])
+      }
+      (cntChanged.get(slot_.idCnt) as UpdateSlot<S>[]).push(update)
+
+      this.slot(slot_.idCnt, slot_.id).dispatchEvent(
+        new EventSlotChange(playfield, playfield_, slot_.idCnt, slot_.id)
+      )
+    }
+
+    for (const [idCnt, updates] of cntChanged) {
+      this.container(idCnt).dispatchEvent(
+        new EventContainerChange(playfield, playfield_, idCnt, updates)
+      )
+    }
+    
+    this.postSlotUpdate(updates, preSlotChangeInfo, send)
+    
+    this.playfield.dispatchEvent(new EventPlayfieldChange(playfield, playfield_))
+    
+    return playfield_
   }
 }
 
@@ -632,47 +671,6 @@ export class Playfield {
       containers_ = containers_.map(cnt => cnt.update(update))
     }
     return new Playfield(this.containers, containers_)
-  }
-
-  slotsUpdateCard(playfield_:Playfield, updates:UpdateSlot<SlotCard>[], notifierSlot:NotifierSlot,
-                  send=true):Playfield {
-    return this.slotsUpdate(playfield_, updates, notifierSlot, send, notifierSlot.preSlotUpdateCard(updates, send))
-  }
-  
-  slotsUpdateChip(playfield_:Playfield, updates:UpdateSlot<SlotChip>[], notifierSlot:NotifierSlot,
-                  send=true):Playfield {
-    return this.slotsUpdate(playfield_, updates, notifierSlot, send, notifierSlot.preSlotUpdateChip(updates, send))
-  }
-  
-  protected slotsUpdate<S extends Slot>(
-    playfield_:Playfield, updates:UpdateSlot<S>[], notifierSlot:NotifierSlot, send:boolean,
-    preSlotChangeInfo:ResultPreSlotUpdate
-  ):Playfield {
-    const cntChanged:Map<string, UpdateSlot<S>[]> = new Map()
-    for (const update of updates) {
-      const [slot, slot_] = update
-      
-      if (!cntChanged.has(slot_.idCnt)) {
-        cntChanged.set(slot_.idCnt, [])
-      }
-      (cntChanged.get(slot_.idCnt) as UpdateSlot<S>[]).push(update)
-
-      notifierSlot.slot(slot_.idCnt, slot_.id).dispatchEvent(
-        new EventSlotChange(this, playfield_, slot_.idCnt, slot_.id)
-      )
-    }
-
-    for (const [idCnt, updates] of cntChanged) {
-      notifierSlot.container(idCnt).dispatchEvent(
-        new EventContainerChange(this, playfield_, idCnt, updates)
-      )
-    }
-    
-    notifierSlot.postSlotUpdate(updates, preSlotChangeInfo, send)
-    
-    notifierSlot.playfield.dispatchEvent(new EventPlayfieldChange(this, playfield_))
-    
-    return playfield_
   }
 }
 

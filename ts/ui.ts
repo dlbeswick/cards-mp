@@ -215,7 +215,7 @@ abstract class UISlotCard extends UIActionable {
       // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
       const slotSrc_ = slotSrc.remove(cardsSrc).add(cardsSrc)
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_]]
-      this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
     } else {
       // case 2: diff slot. Always flip face-up, unless a human player has deliberately flipped it.
       
@@ -231,7 +231,7 @@ abstract class UISlotCard extends UIActionable {
       }))
       
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
-      this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
     }
   }
 }
@@ -422,7 +422,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id(), cardsSrc)
 
     const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [undefined, slotDst_]]
-    this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+    this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
   }
   
   change(playfield_:Playfield, cnt:ContainerSlotCard, cnt_:ContainerSlotCard, updates:UpdateSlot<SlotCard>[]):void {
@@ -708,7 +708,7 @@ export class UISlotChip extends UIActionable {
       const slotSrc_ = slotSrc.remove(chipsSrc)
       const slotDst_ = slotDst.add(chipsSrc)
       const updates:UpdateSlot<SlotChip>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
-      this.playfield.slotsUpdateChip(this.playfield.withUpdateChip(updates), updates, this.notifierSlot)
+      this.notifierSlot.slotsUpdateChip(this.playfield, this.playfield.withUpdateChip(updates), updates)
     }
   }
 }
@@ -828,12 +828,12 @@ export class UICard extends UIMovable {
     if (slotSrc === slotDst) {
       const slot_ = slotSrc.remove(cardsSrc).add(cardsSrc, this.wcard)
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slot_]]
-      this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
     } else {
       const slotSrc_ = slotSrc.remove(cardsSrc)
       const slotDst_ = slotDst.add(cardsSrc, this.wcard)
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
-      this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
     }
   }
   
@@ -860,14 +860,14 @@ export class UICard extends UIMovable {
     const slot = this.uislot.slot()
     const slot_ = slot.replace(this.wcard, this.wcard.withFaceStateConscious(!this.wcard.faceUp, this.wcard.faceUp))
     const updates:UpdateSlot<SlotCard>[] = [[slot, slot_]]
-    this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+    this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
   }
   
   private turn() {
     const slot = this.uislot.slot()
     const slot_ = slot.replace(this.wcard, this.wcard.withTurned(!this.wcard.turned))
     const updates:UpdateSlot<SlotCard>[] = [[slot, slot_]]
-    this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+    this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
   }
 }
 

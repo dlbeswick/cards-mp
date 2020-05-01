@@ -244,7 +244,7 @@ class App {
       cnt => cnt.map(wc => wc.withFaceStateConscious(true, true))
     )
     
-    this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates, this.notifierSlot)
+    this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
   }
 
   onReceiveData(data:any, registrant:any, peer:PeerPlayer) {
@@ -271,9 +271,8 @@ class App {
       updates = (data.slotUpdates as UpdateSlot<SlotCard>[]).map(
         ([s,s_]) => [s ? SlotCard.fromSerialized(s) : undefined, SlotCard.fromSerialized(s_)]
       )
-      
-      this.playfield = this.playfield.slotsUpdateCard(this.playfield.withUpdateCard(updates), updates,
-                                                      this.notifierSlot, false)
+
+      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates, false)
     } else if (data.slotUpdatesChip) {
       let updates:UpdateSlot<SlotChip>[]
       let slots:SlotChip[]
@@ -282,8 +281,7 @@ class App {
         ([s,s_]) => [s ? SlotChip.fromSerialized(s) : undefined, SlotChip.fromSerialized(s_)]
       )
       
-      this.playfield = this.playfield.slotsUpdateChip(this.playfield.withUpdateChip(updates), updates,
-                                                      this.notifierSlot, false)
+      this.notifierSlot.slotsUpdateChip(this.playfield, this.playfield.withUpdateChip(updates), updates, false)
     } else {
       console.debug("Unknown message", data)
     }
