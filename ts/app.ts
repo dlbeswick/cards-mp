@@ -438,16 +438,16 @@ function makeUiPoker(playfield:Playfield, app:App) {
 
       cnt.add(
         new UIContainerFlex().with(cnt => {
-          let uislotWaste = new UISlotSpread('waste-secret', app.selection, null, viewer, playfield, 0,
+          let uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0,
                                              app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
                                              app.cardHeightGet(), '100%', ['slot', 'slot-overlap', 'narrow'])
           uislotWaste.init()
           uislotWaste.element.style.flexGrow = "1"
           cnt.add(uislotWaste)
           
-          uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0,
+          uislotWaste = new UISlotSpread('community', app.selection, null, viewer, playfield, 0,
                                          app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                         app.cardHeightGet(), '100%')
+                                         app.cardHeightGet(), '100%', ['slot', 'slot-overlap', 'aware'])
           uislotWaste.init()
           uislotWaste.element.style.flexGrow = "1"
           cnt.add(uislotWaste)

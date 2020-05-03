@@ -952,8 +952,8 @@ export class GamePoker extends Game {
     return new Playfield(
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
-       new ContainerSlotCard("waste-secret", [new SlotCard(0, "waste-secret")], true),
-       new ContainerSlotCard("waste", [new SlotCard(0, "waste")]),
+       new ContainerSlotCard("waste", [new SlotCard(0, "waste")], true),
+       new ContainerSlotCard("community", [new SlotCard(0, "community")]),
        new ContainerSlotCard("stock", [new SlotCard(0, "stock",
                                                     deck.map(c => new WorldCard(c, false)))])],
       [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
