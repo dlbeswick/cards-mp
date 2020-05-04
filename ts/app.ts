@@ -300,6 +300,20 @@ class App {
     this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield), serialized.viewer)
     this.sync()
   }
+
+  dealInteractive() {
+    const gen = this.game.deal(this.playfield)
+    const step = (playfield:Playfield) => {
+      const it = gen.next()
+      if (!it.done) {
+        const [playfield_, updates] = it.value
+        this.notifierSlot.slotsUpdateCard(playfield, playfield_, updates)
+        window.setTimeout(step.bind(this, playfield), 250)
+      }
+    }
+    window.setTimeout(step.bind(this, this.playfield), 250)
+    return false
+  }
 }
 
 let appGlobal:App
@@ -329,7 +343,8 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
       cnt.add(uislotWaste)
       
       const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                           app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
+                                           app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                                           'flip', ['Deal', () => app.dealInteractive()])
       uislotStock.init()
       cnt.add(uislotStock)
     })
@@ -394,7 +409,8 @@ function makeUiDummy(playfield:Playfield, app:App) {
   root.add(uislotBottom)
 
   const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                       app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
+                                       app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                                       'flip', ['Deal', () => app.dealInteractive()])
   uislotStock.init()
   root.add(uislotStock)
 }
@@ -490,6 +506,11 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
     new UIContainerFlex('aware').with(cnt => {
       cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
       cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
+      cnt.add(
+        new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
+                         app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                         'flip', ['Deal', () => app.dealInteractive()]).init()
+      )
     })
   )
   

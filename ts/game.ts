@@ -177,6 +177,10 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
     return { ...super.serialize(), items: this.items.map(c => c.serialize()), idCnt: this.idCnt }
   }
   
+  addSorted(items:T[], compareFn:(a:T, b:T) => number):this {
+    return this.construct(this.id, this.idCnt, this.items.concat(items).sort(compareFn))
+  }
+  
   add(items:T[], before?:T):this {
     const idx = (() => {
       if (before) {
@@ -318,14 +322,14 @@ export class Card extends IdentifiedVar {
   }
 }
 
-export class WorldCard extends IdentifiedByVal<string> {
+export class WorldCard extends IdentifiedVar<string> {
   readonly card:Card
   readonly faceUp:boolean
   readonly faceUpIsConscious:boolean
   readonly turned:boolean
 
-  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false) {
-    super()
+  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false, id=card.id()) {
+    super(id)
     this.card = card
     this.faceUp = faceUp
     this.faceUpIsConscious = faceUpIsConscious
@@ -342,10 +346,6 @@ export class WorldCard extends IdentifiedByVal<string> {
       this.faceUp == rhs.faceUp &&
       this.faceUpIsConscious == rhs.faceUpIsConscious &&
       this.turned == rhs.turned
-  }
-
-  id() {
-    return this.card.id()
   }
 
   withFaceUp(faceUp:boolean) {
@@ -404,9 +404,17 @@ function orderColorAlternate(c:Card):number {
   }
 }
 
+function orderColorAlternateRank(a:Card, b:Card):number {
+  return orderColorAlternate(a) - orderColorAlternate(b) || a.rank - b.rank
+}
+
+function orderColorAlternateRankW(a:WorldCard, b:WorldCard):number {
+  return orderColorAlternate(a.card) - orderColorAlternate(b.card) || a.card.rank - b.card.rank
+}
+
 function sortedByAltColorAndRank(deck:Card[]):Card[] {
   const result = [...deck]
-  result.sort((a, b) => orderColorAlternate(a) - orderColorAlternate(b) || a.rank - b.rank)
+  result.sort(orderColorAlternateRank)
   return result
 }
 
@@ -869,11 +877,9 @@ export class Connections {
 }
 
 export abstract class Game extends IdentifiedVar {
-  readonly description:string
-  readonly makeUi:(...args:any) => void
   readonly players:Player[]
 
-  constructor(id:string, description:string, makeUi:(...args:any) => void, players:Player[]) {
+  constructor(id:string, readonly description:string, readonly makeUi:(...args:any) => void, players:Player[]) {
     super(id)
     this.description = description
     this.makeUi = makeUi
@@ -881,9 +887,31 @@ export abstract class Game extends IdentifiedVar {
   }
   
   abstract playfield():Playfield
+  
+  *deal(playfield:Playfield):Generator<[Playfield, UpdateSlot<SlotCard>[]], void> {
+  }
+  
   playfieldNewHand(playfieldOld:Playfield):Playfield {
     const pf = this.playfield()
     return new Playfield(pf.containers, playfieldOld.containersChip)
+  }
+
+  playersActive():Player[] {
+    return this.players.filter(p => p.idCnts.length != 0)
+  }
+
+  protected *dealEach(playfield:Playfield, cnt:number) {
+    for (let i = 0; i < cnt; ++i)
+      for (const p of this.playersActive()) {
+        const slotSrc = playfield.container('stock').slot(0)
+        const slotSrc_ = slotSrc.remove([slotSrc.top()])
+        const slotDst = playfield.container(p.idCnts[0]).slot(0)
+        const slotDst_ = slotDst.addSorted([slotSrc.top().withFaceUp(true)], orderColorAlternateRankW)
+        
+        const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
+        playfield = playfield.withUpdateCard(updates)
+        yield [playfield, updates] as [Playfield, UpdateSlot<SlotCard>[]]
+      }
   }
 }
 
@@ -892,17 +920,18 @@ export class GameGinRummy extends Game {
     super("gin-rummy", "Gin Rummy", makeUi,
           [new Player('Player 1', ['p0']), new Player('Player 2', ['p1'])])
   }
+
+  deal(playfield:Playfield) {
+    return this.dealEach(playfield, 10)
+  }
   
   playfield():Playfield {
-    const deck = shuffled(deck52())
     return new Playfield(
-      [new ContainerSlotCard("p0", [new SlotCard(0, "p0",
-                                         sortedByAltColorAndRank(deck.slice(0,10)).map(c => new WorldCard(c, true)))]),
-       new ContainerSlotCard("p1", [new SlotCard(0, "p1",
-                                         sortedByAltColorAndRank(deck.slice(10,20)).map(c => new WorldCard(c, true)))]),
+      [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
+       new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
        new ContainerSlotCard("waste", [new SlotCard(0, "waste")]),
-       new ContainerSlotCard("stock", [new SlotCard(0, "stock",
-                                                    deck.slice(20).map(c => new WorldCard(c, false)))])],
+       new ContainerSlotCard("stock", [new SlotCard(0, "stock", shuffled(deck52()).map(c => new WorldCard(c, false)))])
+      ],
       []
     )
   }
@@ -914,18 +943,19 @@ export class GameDummy extends Game {
           [new Player('Player 1', ['p0']), new Player('Player 2', ['p1']), new Player('Spectator', [])])
   }
   
+  deal(playfield:Playfield) {
+    return this.dealEach(playfield, 13)
+  }
+  
   playfield():Playfield {
-    const deck = shuffled(deck52())
     return new Playfield(
-      [new ContainerSlotCard("p0", [new SlotCard(0, "p0", 
-                                         sortedByAltColorAndRank(deck.slice(0,13)).map(c => new WorldCard(c, true)))]),
-       new ContainerSlotCard("p1", [new SlotCard(0, "p1",
-                                         sortedByAltColorAndRank(deck.slice(13,26)).map(c => new WorldCard(c, true)))]),
+      [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
+       new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
        new ContainerSlotCard("p0-meld", []),
        new ContainerSlotCard("waste", [new SlotCard(0, "waste")]),
        new ContainerSlotCard("p1-meld", []),
-       new ContainerSlotCard("stock", [new SlotCard(0, "stock",
-                                                    deck.slice(26).map(c => new WorldCard(c, false)))])],
+       new ContainerSlotCard("stock", [new SlotCard(0, "stock", shuffled(deck52()).map(c => new WorldCard(c, false)))])
+      ],
       []
     )
   }
@@ -954,8 +984,7 @@ export class GamePoker extends Game {
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
        new ContainerSlotCard("waste", [new SlotCard(0, "waste")], true),
        new ContainerSlotCard("community", [new SlotCard(0, "community")]),
-       new ContainerSlotCard("stock", [new SlotCard(0, "stock",
-                                                    deck.map(c => new WorldCard(c, false)))])],
+       new ContainerSlotCard("stock", [new SlotCard(0, "stock", deck.map(c => new WorldCard(c, false)))])],
       [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
        new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),
        new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
@@ -973,9 +1002,11 @@ export class GamePokerChinese extends Game {
            ])
   }
   
+  deal(playfield:Playfield) {
+    return this.dealEach(playfield, 13)
+  }
+  
   playfield():Playfield {
-    const deck = shuffled(deck52())
-
     const chips = (id:string, base:number) => 
       [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+512+base, 100))),
        new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+256+base, 50))),
@@ -984,10 +1015,11 @@ export class GamePokerChinese extends Game {
        ]
     
     return new Playfield(
-      [new ContainerSlotCard("p0", [new SlotCard(0, "p0", deck.slice(0,13).map(c => new WorldCard(c, true)))]),
-       new ContainerSlotCard("p1", [new SlotCard(0, "p1", deck.slice(13,26).map(c => new WorldCard(c, true)))]),
+      [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
+       new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
        new ContainerSlotCard("p0-show", array.range(3).map((_,i) => new SlotCard(i, "p0-show"))),
-       new ContainerSlotCard("p1-show", array.range(3).map((_,i) => new SlotCard(i, "p1-show")))
+       new ContainerSlotCard("p1-show", array.range(3).map((_,i) => new SlotCard(i, "p1-show"))),
+       new ContainerSlotCard("stock", [new SlotCard(0, "stock", shuffled(deck52()).map(c => new WorldCard(c, false)))])
       ],
       [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
        new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),

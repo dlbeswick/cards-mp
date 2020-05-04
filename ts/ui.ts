@@ -247,7 +247,7 @@ export class UISlotSingle extends UISlotCard {
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield,
               idSlot:number, notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, cardWidth:number,
-              cardHeight:number, actionLongPress='flip') {
+              cardHeight:number, actionLongPress='flip', action?:[string, () => boolean]) {
     super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, idSlot, notifierSlot,
           urlCards, urlCardBack, actionLongPress)
     this.element.classList.add("slot-single")
@@ -259,6 +259,15 @@ export class UISlotSingle extends UISlotCard {
     this.cardHeight = cardHeight
     this.elCard = this.spaceMake()
     this.element.appendChild(this.elCard)
+
+    if (action) {
+      const btn = document.createElement("button")
+      btn.innerText = action[0]
+      btn.addEventListener("click", () => {
+        btn.disabled = !action[1]()
+      })
+      this.element.appendChild(btn)
+    }
   }
 
   private spaceMake() {
