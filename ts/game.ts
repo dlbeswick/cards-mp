@@ -312,6 +312,10 @@ export class Card extends IdentifiedVar {
     else
       return Color.RED
   }
+
+  rankValue(aceHigh:boolean):number {
+    return this.rank == 0 && aceHigh ? 13 : this.rank
+  }
   
   serialize():any {
     return {
@@ -404,18 +408,12 @@ function orderColorAlternate(c:Card):number {
   }
 }
 
-function orderColorAlternateRank(a:Card, b:Card):number {
-  return orderColorAlternate(a) - orderColorAlternate(b) || a.rank - b.rank
+function orderColorAlternateRank(aceHigh:boolean, a:Card, b:Card):number {
+  return orderColorAlternate(a) - orderColorAlternate(b) || a.rankValue(aceHigh) - b.rankValue(aceHigh)
 }
 
-function orderColorAlternateRankW(a:WorldCard, b:WorldCard):number {
-  return orderColorAlternate(a.card) - orderColorAlternate(b.card) || a.card.rank - b.card.rank
-}
-
-function sortedByAltColorAndRank(deck:Card[]):Card[] {
-  const result = [...deck]
-  result.sort(orderColorAlternateRank)
-  return result
+function orderColorAlternateRankW(aceHigh:boolean, a:WorldCard, b:WorldCard):number {
+  return orderColorAlternateRank(aceHigh, a.card, b.card)
 }
 
 export class EventSlotChange extends Event {
@@ -900,13 +898,13 @@ export abstract class Game extends IdentifiedVar {
     return this.players.filter(p => p.idCnts.length != 0)
   }
 
-  protected *dealEach(playfield:Playfield, cnt:number) {
+  protected *dealEach(playfield:Playfield, cnt:number, ordering:(a:WorldCard, b:WorldCard) => number) {
     for (let i = 0; i < cnt; ++i)
       for (const p of this.playersActive()) {
         const slotSrc = playfield.container('stock').slot(0)
         const slotSrc_ = slotSrc.remove([slotSrc.top()])
         const slotDst = playfield.container(p.idCnts[0]).slot(0)
-        const slotDst_ = slotDst.addSorted([slotSrc.top().withFaceUp(true)], orderColorAlternateRankW)
+        const slotDst_ = slotDst.addSorted([slotSrc.top().withFaceUp(true)], ordering)
         
         const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
         playfield = playfield.withUpdateCard(updates)
@@ -922,7 +920,7 @@ export class GameGinRummy extends Game {
   }
 
   deal(playfield:Playfield) {
-    return this.dealEach(playfield, 10)
+    return this.dealEach(playfield, 10, orderColorAlternateRankW.bind(null, false))
   }
   
   playfield():Playfield {
@@ -944,7 +942,7 @@ export class GameDummy extends Game {
   }
   
   deal(playfield:Playfield) {
-    return this.dealEach(playfield, 13)
+    return this.dealEach(playfield, 13, orderColorAlternateRankW.bind(null, false))
   }
   
   playfield():Playfield {
@@ -1003,7 +1001,7 @@ export class GamePokerChinese extends Game {
   }
   
   deal(playfield:Playfield) {
-    return this.dealEach(playfield, 13)
+    return this.dealEach(playfield, 13, orderColorAlternateRankW.bind(null, true))
   }
   
   playfield():Playfield {

@@ -504,13 +504,13 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
 
   root.add(
     new UIContainerFlex('aware').with(cnt => {
-      cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
-      cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
       cnt.add(
         new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
                          app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
                          'flip', ['Deal', () => app.dealInteractive()]).init()
       )
+      cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
+      cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
     })
   )
   
