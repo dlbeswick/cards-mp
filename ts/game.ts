@@ -278,6 +278,16 @@ export class Player extends IdentifiedVar {
     super(id)
     this.idCnts = idCnts
   }
+
+  multipleAssignmentPossible():boolean { return false }
+}
+
+export class PlayerSpectator extends Player {
+  constructor() {
+    super("spectator", [])
+  }
+
+  multipleAssignmentPossible():boolean { return true }
 }
 
 enum Suit {
@@ -679,12 +689,14 @@ declare var Peer:any
 
 export class PeerPlayer extends IdentifiedVar {
   private conn:any
+  private player:Player
   private readonly conns:Connections
   
-  constructor(id:string, conn:any, conns:Connections) {
+  constructor(id:string, conn:any, conns:Connections, player:Player) {
     super(id)
     this.conn = conn
     this.conns = conns
+    this.player = player
 
     this.keepConnected()
   }
@@ -696,9 +708,13 @@ export class PeerPlayer extends IdentifiedVar {
       if (reconnects < 5) {
         console.log("Lost peer connection, trying to reconnect", this.id(), reconnects, failTimeout)
         
-        this.conns.connect(this.id(), (peerPlayer, conn) => {
-          this.conn = conn
-        })
+        this.conns.connect(
+          this.id(),
+          (peerId:string) => [this.player, ""],
+          (peerPlayer, conn) => {
+            this.conn = conn
+          }
+        )
         
         window.setTimeout(() => this.keepConnected(timeout, failTimeout * 2, ++reconnects), failTimeout)
       } else {
@@ -707,13 +723,20 @@ export class PeerPlayer extends IdentifiedVar {
       }
     }
   }
-  
+
   open():boolean {
     return this.conn.open
   }
 
+  playerGet():Player { return this.player }
+  playerChange(player:Player):void { this.player = player }
+  
   send(data:any) {
     this.conn.send(data)
+  }
+
+  serialize():any {
+    return { ...super.serialize(), player: this.player.id }
   }
 }
 
@@ -731,10 +754,15 @@ export class Connections {
   private registrant:any
   private registering:boolean = false
   private peers:Map<string, PeerPlayer> = new Map()
+
+  registrantId():string|undefined {
+    return this.registrant?.id
+  }
   
   register(id:string,
-           onPeerConnect:(metadata:any, peerId:string) => void,
-           onReceive:(data:any, registrant:any, peer:PeerPlayer) => void) {
+           onPeerConnect:(metadata:any, peer:PeerPlayer) => void,
+           onReceive:(data:any, registrant:any, peer:PeerPlayer) => void,
+           playerGet:(peerId:string) => [Player|undefined, string]) {
     
     assertf(() => id)
     assertf(() => !this.registering)
@@ -750,7 +778,7 @@ export class Connections {
         dom.demandById("peerjs-status").innerHTML = "Re-registering"
         this.registrant.disconnect()
         this.registrant = null
-        this.register(id, onPeerConnect, onReceive)
+        this.register(id, onPeerConnect, onReceive, playerGet)
       }
       return
     }
@@ -788,18 +816,23 @@ export class Connections {
       console.log("Peer connected to us", conn)
       
       if (!this.peerById(conn.peer) || !this.peerById(conn.peer)!.open()) {
-        this.connect(conn.peer, () => {
-          this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id())}})
-          onPeerConnect(conn.metadata, conn.peer)
-        })
+        this.connect(
+          conn.peer,
+          playerGet,
+          (peer:PeerPlayer, _:any) => {
+            this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id())}})
+            onPeerConnect(conn.metadata, peer)
+          }
+        )
       }
 
-      // Receive messages
       conn.on('data', (data:any) => {
+        console.debug('Received', data)
+
         const peer = this.peerById(conn.peer)
-        if (peer)
-          onReceive(data, registrant, peer)
+        peer && onReceive(data, registrant, peer)
       })
+      
       conn.on('error', (e:any) => {
         const peer = this.peerById(conn.peer)
         peer && this.onPeerError(peer, e)
@@ -811,7 +844,13 @@ export class Connections {
     return this.peers.get(id)
   }
 
-  connect(idPeer:string, onConnect?:(peer:PeerPlayer, conn:any) => void) {
+  peerByPlayer(player:Player):PeerPlayer|undefined {
+    return Array.from(this.peers.values()).find((p) => p.playerGet() === player)
+  }
+  
+  connect(idPeer:string, playerGet:(peerId:string) => [Player|undefined, string],
+          onConnect?:(peer:PeerPlayer, conn:any) => void) {
+    
     assertf(() => idPeer)
     
     if (this.registrant) {
@@ -827,28 +866,37 @@ export class Connections {
         
         conn.on('open', () => {
           console.log("Peer opened", conn)
-          //demandElementById("connect-status").innerHTML = "Waiting for reply"
 
           let peerPlayer = this.peers.get(idPeer)
           if (!peerPlayer) {
-            peerPlayer = new PeerPlayer(conn.peer, conn, this)
-            this.peers.set(conn.peer, peerPlayer)
+            const [player, message] = playerGet(conn.peer)
+            if (player) {
+              peerPlayer = new PeerPlayer(conn.peer, conn, this, player)
+              this.peers.set(conn.peer, peerPlayer)
+              this.broadcast({peerUpdate: {peerPlayers: Array.from(this.peers.values()).map((p) => p.serialize())}})
+            } else {
+              conn.send({deny: {message: message}})
+              conn.close()
+            }
           }
 
+          assert(peerPlayer)
           onConnect && onConnect(peerPlayer, conn)
           
           this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
           
           function ping(secs:any) {
-            if (peerPlayer!.open()) {
-              peerPlayer!.send({ping: {secs: secs}})
+            assert(peerPlayer)
+            if (peerPlayer.open()) {
+              peerPlayer.send({ping: {secs: secs}})
               window.setTimeout(() => ping(secs+30), 30000)
             }
           }
           ping(0)
           
           conn.on('error', (err:any) => {
-            this.onPeerError(peerPlayer!, err)
+            assert(peerPlayer)
+            this.onPeerError(peerPlayer, err)
           })
         })
       }
@@ -881,16 +929,16 @@ export abstract class Game extends IdentifiedVar {
     super(id)
     this.description = description
     this.makeUi = makeUi
-    this.players = players.concat([new Player('Spectator', [])])
+    this.players = players.concat([new PlayerSpectator()])
   }
   
-  abstract playfield():Playfield
+  abstract playfield(players:number):Playfield
   
-  *deal(playfield:Playfield):Generator<[Playfield, UpdateSlot<SlotCard>[]], void> {
+  *deal(players:number, playfield:Playfield):Generator<[Playfield, UpdateSlot<SlotCard>[]], void> {
   }
   
-  playfieldNewHand(playfieldOld:Playfield):Playfield {
-    const pf = this.playfield()
+  playfieldNewHand(players:number, playfieldOld:Playfield):Playfield {
+    const pf = this.playfield(players)
     return new Playfield(pf.containers, playfieldOld.containersChip)
   }
 
@@ -898,9 +946,9 @@ export abstract class Game extends IdentifiedVar {
     return this.players.filter(p => p.idCnts.length != 0)
   }
 
-  protected *dealEach(playfield:Playfield, cnt:number, ordering:(a:WorldCard, b:WorldCard) => number) {
+  protected *dealEach(players:number, playfield:Playfield, cnt:number, ordering:(a:WorldCard, b:WorldCard) => number) {
     for (let i = 0; i < cnt; ++i)
-      for (const p of this.playersActive()) {
+      for (const p of this.playersActive().slice(0, players)) {
         const slotSrc = playfield.container('stock').slot(0)
         const slotSrc_ = slotSrc.remove([slotSrc.top()])
         const slotDst = playfield.container(p.idCnts[0]).slot(0)
@@ -919,11 +967,11 @@ export class GameGinRummy extends Game {
           [new Player('Player 1', ['p0']), new Player('Player 2', ['p1'])])
   }
 
-  deal(playfield:Playfield) {
-    return this.dealEach(playfield, 10, orderColorAlternateRankW.bind(null, false))
+  deal(players:number, playfield:Playfield) {
+    return this.dealEach(players, playfield, 10, orderColorAlternateRankW.bind(null, false))
   }
   
-  playfield():Playfield {
+  playfield(players:number):Playfield {
     return new Playfield(
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
@@ -938,14 +986,14 @@ export class GameGinRummy extends Game {
 export class GameDummy extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("dummy", "Dummy / 500 Rum", makeUi,
-          [new Player('Player 1', ['p0']), new Player('Player 2', ['p1']), new Player('Spectator', [])])
+          [new Player('Player 1', ['p0']), new Player('Player 2', ['p1'])])
   }
   
-  deal(playfield:Playfield) {
-    return this.dealEach(playfield, 13, orderColorAlternateRankW.bind(null, false))
+  deal(players:number, playfield:Playfield) {
+    return this.dealEach(players, playfield, 13, orderColorAlternateRankW.bind(null, false))
   }
   
-  playfield():Playfield {
+  playfield(players:number):Playfield {
     return new Playfield(
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
@@ -962,32 +1010,31 @@ export class GameDummy extends Game {
 export class GamePoker extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("poker", "Poker", makeUi,
-          [new Player('Player 1', ['p0', 'p0-chip']),
-           new Player('Player 2', ['p1', 'p1-chip']),
-           ])
+          array.range(8).map(i => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
   }
   
-  playfield():Playfield {
+  playfield(players:number):Playfield {
     const deck = shuffled(deck52())
 
     const chips = (id:string, base:number) => 
-      [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+512+base, 100))),
-       new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+256+base, 50))),
-       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,20))),
-       new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+base, 10)))
+      [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+80+100*base, 100))),
+       new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+60+100*base, 50))),
+       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+40+100*base,20))),
+       new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+20+100*base, 10)))
        ]
     
     return new Playfield(
-      [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
-       new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
-       new ContainerSlotCard("waste", [new SlotCard(0, "waste")], true),
-       new ContainerSlotCard("community", [new SlotCard(0, "community")]),
-       new ContainerSlotCard("stock", [new SlotCard(0, "stock", deck.map(c => new WorldCard(c, false)))])],
-      [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
-       new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),
-       new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
-                                      new SlotChip(3, "ante")])
-      ]
+      this.players.map(p => new ContainerSlotCard(p.idCnts[0], [new SlotCard(0, p.idCnts[0])])).concat(
+        [new ContainerSlotCard("waste", [new SlotCard(0, "waste")], true),
+         new ContainerSlotCard("community", [new SlotCard(0, "community")]),
+         new ContainerSlotCard("stock", [new SlotCard(0, "stock", deck.map(c => new WorldCard(c, false)))])]
+      ),
+      this.players.map((p,idx) => new ContainerSlotChip(p.idCnts[1], chips(p.idCnts[1], idx))).concat(
+        [new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),
+         new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
+                                        new SlotChip(3, "ante")])
+        ]
+      )
     )
   }
 }
@@ -995,35 +1042,35 @@ export class GamePoker extends Game {
 export class GamePokerChinese extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("poker-chinese", "Chinese Poker", makeUi,
-          [new Player('Player 1', ['p0', 'p0-chip']),
-           new Player('Player 2', ['p1', 'p1-chip']),
-           ])
+          array.range(4).map(i => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
   }
   
-  deal(playfield:Playfield) {
-    return this.dealEach(playfield, 13, orderColorAlternateRankW.bind(null, true))
+  deal(players:number, playfield:Playfield) {
+    return this.dealEach(players, playfield, 13, orderColorAlternateRankW.bind(null, true))
   }
   
-  playfield():Playfield {
+  playfield(players:number):Playfield {
     const chips = (id:string, base:number) => 
-      [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+512+base, 100))),
-       new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+256+base, 50))),
-       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+128+base,20))),
-       new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+base, 10)))
+      [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+80+100*base, 100))),
+       new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+60+100*base, 50))),
+       new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+40+100*base,20))),
+       new SlotChip(3, id, array.range(20).map((_,i) => new Chip(i+20+100*base, 10)))
        ]
     
     return new Playfield(
-      [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
-       new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
-       new ContainerSlotCard("p0-show", array.range(3).map((_,i) => new SlotCard(i, "p0-show"))),
-       new ContainerSlotCard("p1-show", array.range(3).map((_,i) => new SlotCard(i, "p1-show"))),
-       new ContainerSlotCard("stock", [new SlotCard(0, "stock", shuffled(deck52()).map(c => new WorldCard(c, false)))])
-      ],
-      [new ContainerSlotChip("p0-chip", chips("p0-chip", 0)),
-       new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),
-       new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
-                                      new SlotChip(3, "ante")])
-      ]
+      this.players.map(p => new ContainerSlotCard(p.idCnts[0], [new SlotCard(0, p.idCnts[0])])).concat(
+        [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
+         new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
+         new ContainerSlotCard("p0-show", array.range(3).map((_,i) => new SlotCard(i, "p0-show"))),
+         new ContainerSlotCard("p1-show", array.range(3).map((_,i) => new SlotCard(i, "p1-show"))),
+         new ContainerSlotCard("stock", [new SlotCard(0, "stock", shuffled(deck52()).map(c => new WorldCard(c, false)))])
+        ]
+      ),
+      this.players.map((p,idx) => new ContainerSlotChip(p.idCnts[1], chips(p.idCnts[1], idx))).concat(
+        [new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
+                                        new SlotChip(3, "ante")])
+        ]
+      )
     )
   }
 }

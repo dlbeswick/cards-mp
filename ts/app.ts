@@ -40,6 +40,7 @@ class App {
   readonly urlCardBack:string
   readonly connections:Connections = new Connections()
   readonly games:Game[]
+  readonly maxPlayers:number = 2
   private root:UISlotRoot
   private cardWidth = 74
   private cardHeight = 112
@@ -89,7 +90,7 @@ class App {
     }
 
     this.game = game
-    this.playfield = playfield ?? this.game.playfield()
+    this.playfield = playfield ?? this.game.playfield(this.maxPlayers)
     this.viewerSet(
       this.game.players.find(p => p.id() == viewerId) ??
         this.game.players.find(p => p.id() == this.viewer?.id()) ??
@@ -98,7 +99,7 @@ class App {
   }
 
   newHand() {
-    this.playfield = this.game.playfieldNewHand(this.playfield)
+    this.playfield = this.game.playfieldNewHand(this.maxPlayers, this.playfield)
     this.viewerSet(this.viewer)
   }
   
@@ -112,6 +113,9 @@ class App {
   
   viewerSet(viewer:Player) {
     assertf(() => this.game)
+    if (this.viewer == viewer)
+      return
+    
     this.viewer = viewer
 
     this.root.destroy()
@@ -249,8 +253,6 @@ class App {
   }
 
   onReceiveData(data:any, registrant:any, peer:PeerPlayer) {
-    console.log('Received', data)
-
     if (data.chern) {
       for (const id of data.chern.idPeers)
         if (id != registrant.id)
@@ -265,6 +267,18 @@ class App {
       dom.demandById("game-type", HTMLSelectElement).value = data.sync.game
     } else if (data.askSync) {
       this.sync(peer.id())
+    } else if (data.peerUpdate) {
+      // Sync peer player chosen players from message
+      for (const peerPlayer of data.peerUpdate.peerPlayers) {
+        const player = this.game.players.find((p) => p.id == peerPlayer.player.id)
+        assert(player)
+        
+        if (peerPlayer.id == this.connections.registrantId()) {
+          this.viewerSet(player)
+        } else {
+          this.connections.peerById(peerPlayer.id)?.playerChange(player)
+        }
+      }
     } else if (data.slotUpdates) {
       let updates:UpdateSlot<SlotCard>[]
       let slots:SlotCard[]
@@ -288,6 +302,21 @@ class App {
     }
   }
 
+  onPeerConnect(metadata:any, peer:PeerPlayer):void {
+    if (metadata != 'reconnect')
+      this.sync(peer.id()) // tbd: check playfield sequence # and only sync if necessary
+  }
+
+  playerGetForPeer(peerId:string):[Player|undefined, string] {
+    for (const player of this.game.players) {
+      const peer = this.connections.peerByPlayer(player)
+      if (!peer)
+        return [player, ""]
+    }
+
+    return [undefined, "Game is full"]
+  }
+  
   serialize() {
     return {
       game: this.game.id(),
@@ -302,7 +331,7 @@ class App {
   }
 
   dealInteractive() {
-    const gen = this.game.deal(this.playfield)
+    const gen = this.game.deal(this.maxPlayers, this.playfield)
     const step = (playfield:Playfield) => {
       const it = gen.next()
       if (!it.done) {
@@ -439,6 +468,7 @@ function makeUiPoker(playfield:Playfield, app:App) {
   const viewer = app.viewerGet()
   const player = viewer.idCnts[0] ? viewer : app.gameGet().players[0]
   assert(player)
+  
   const opponent = app.gameGet().players.find(p => p.idCnts[0] && p != player)
   assert(opponent)
 
@@ -584,23 +614,26 @@ function run(urlCards:string, urlCardBack:string) {
       throw new Error("Id not given")
     }
     
-    app.connections.register(
-      "mpcard-" + id,
-      (metadata, peerId) => {
-        if (metadata != 'reconnect')
-            app.sync(peerId) // tbd: check playfield sequence # and only sync if necessary
-      },
-      app.onReceiveData.bind(app)
-    )
+    app.connections.register("mpcard-" + id, app.onPeerConnect.bind(app), app.onReceiveData.bind(app),
+                             app.playerGetForPeer.bind(app))
   })
   dom.demandById("connect").addEventListener("click", () => {
     const id = dom.demandById("peerjs-target", HTMLInputElement).value.toLowerCase()
     if (!app.connections.peerById(id))
-      app.connections.connect("mpcard-" + id)
+      app.connections.connect("mpcard-" + id, app.playerGetForPeer.bind(app))
   })
   dom.demandById("sync").addEventListener("click", () => app.sync())
   dom.demandById("player-next").addEventListener("click", () => {
-    app.viewerSet(app.gameGet().players[(app.gameGet().players.indexOf(app.viewerGet()) + 1) % app.gameGet().players.length])
+    const viewerCurrentIdx = app.gameGet().players.indexOf(app.viewerGet())
+    for (let i = (viewerCurrentIdx + 1) % app.gameGet().players.length;
+         i != viewerCurrentIdx;
+         i = (i + 1) % app.gameGet().players.length) {
+      const player = app.gameGet().players[i]
+      if (!app.connections.peerByPlayer(player)) {
+        app.viewerSet(player)
+        break
+      }
+    }
   })
 /*  demandElementById("connect-status").addEventListener(
     "pingback",
@@ -678,6 +711,12 @@ function run(urlCards:string, urlCardBack:string) {
     }
   )
 
+  dom.demandById("players-max").addEventListener(
+    "change",
+    () => {
+    }
+  )
+  
   app.run(dom.demandById("game-type", HTMLSelectElement).value)
 }
 
