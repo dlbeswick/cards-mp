@@ -476,7 +476,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
 }
 
 function makeUiPlayerChips(app:App, owner:Player, viewer:Player, playfield:Playfield) {
-  return new UIContainerFlex().with(cnt => {
+  return new UIContainerFlex('row', false, 'container-tight').with(cnt => {
     for (let idx=0; idx < 4; ++idx) {
       cnt.add(
         new UISlotChip(owner.idCnts[1], app.selection, owner, viewer, playfield, app.notifierSlot, idx,
@@ -542,7 +542,7 @@ function makeUiPoker(playfield:Playfield, app:App) {
     new UIContainerFlex('aware-reverse').with(cnt => {
       cnt.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
       cnt.add(
-        new UIContainerFlex().with(cnt => {
+        new UIContainerFlex('row', false).with(cnt => {
           for (let i=0; i<4; ++i)
             cnt.add(
               new UISlotChip('ante', app.selection, null, viewer, playfield, app.notifierSlot, i,
@@ -597,7 +597,7 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
     new UIContainerFlex('aware').with(cnt => {
       cnt.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
       cnt.add(
-        new UIContainerFlex().with(cnt => {
+        new UIContainerFlex('row',false,'container-tight').with(cnt => {
           for (let i=0; i<4; ++i)
             cnt.add(
               new UISlotChip('ante', app.selection, null, viewer, playfield, app.notifierSlot, i,

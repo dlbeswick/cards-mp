@@ -72,8 +72,9 @@ export class UIContainerDiv extends UIContainer {
 }
 
 export class UIContainerFlex extends UIContainerDiv {
-  constructor(direction:string|undefined='row', grow=false) {
+  constructor(direction:string|undefined='row', grow=false, klass="container-flex") {
     super()
+    this.element.classList.add(klass)
     this.element.style.display = 'flex'
     this.element.style.direction = 'ltr'
     if (grow)
