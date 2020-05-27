@@ -49,8 +49,15 @@ class App {
   private audioCtx?:AudioContext
   private playfield = new Playfield([], [])
   
-  constructor(games:Game[], notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, root:UISlotRoot,
-              readonly onNewGame:(game:Game) => void = () => {}) {
+  constructor(games:Game[],
+              notifierSlot:NotifierSlot,
+              urlCards:string,
+              urlCardBack:string,
+              root:UISlotRoot,
+              readonly onNewGame:(game:Game) => void = () => {},
+              readonly onMaxPlayers:(maxPlayers:number) => void = () => {}
+             ) {
+    
     assertf(() => games)
     this.games = games
     this.game = games[0]
@@ -81,7 +88,7 @@ class App {
   }
   
   newGame(idGame:string, playfield?:Playfield, viewerId?:string) {
-    const game = this.games.find(g => g.id() == idGame)
+    const game = this.games.find(g => g.idGet() == idGame)
     if (!game) {
       throw new Error("No such game " + idGame)
     }
@@ -90,8 +97,8 @@ class App {
     this.maxPlayers = Math.min(this.maxPlayers, this.game.playersActive().length)
     this.playfield = playfield ?? this.game.playfield(this.maxPlayers)
     this.viewerSet(
-      this.game.players.find(p => p.id() == viewerId) ??
-        this.game.players.find(p => p.id() == this.viewer?.id()) ??
+      this.game.players.find(p => p.idGet() == viewerId) ??
+        this.game.players.find(p => p.idGet() == this.viewer?.idGet()) ??
         this.game.players[0]
     ) || this.uiCreate()
 
@@ -127,27 +134,27 @@ class App {
     this.root.destroy()
     this.root = new UISlotRoot()
     this.game.makeUi(this.playfield, this)
-    dom.demandById("player").innerText = this.viewer.id()
+    dom.demandById("player").innerText = this.viewer.idGet()
 
     for (const cnt of this.playfield.containers) {
       for (const slot of cnt) {
-        this.notifierSlot.slot(cnt.id(), slot.id).dispatchEvent(
-          new EventSlotChange(this.playfield, this.playfield, cnt.id(), slot.id)
+        this.notifierSlot.slot(cnt.idGet(), slot.id).dispatchEvent(
+          new EventSlotChange(this.playfield, this.playfield, cnt.idGet(), slot.id)
         )
       }
-      this.notifierSlot.container(cnt.id()).dispatchEvent(
-        new EventContainerChange(this.playfield, this.playfield, cnt.id(), Array.from(cnt).map(s => [s,s]))
+      this.notifierSlot.container(cnt.idGet()).dispatchEvent(
+        new EventContainerChange(this.playfield, this.playfield, cnt.idGet(), Array.from(cnt).map(s => [s,s]))
       )
     }
 
     for (const cnt of this.playfield.containersChip) {
       for (const slot of cnt) {
-        this.notifierSlot.slot(cnt.id(), slot.id).dispatchEvent(
-          new EventSlotChange(this.playfield, this.playfield, cnt.id(), slot.id)
+        this.notifierSlot.slot(cnt.idGet(), slot.id).dispatchEvent(
+          new EventSlotChange(this.playfield, this.playfield, cnt.idGet(), slot.id)
         )
       }
-      this.notifierSlot.container(cnt.id()).dispatchEvent(
-        new EventContainerChange(this.playfield, this.playfield, cnt.id(), Array.from(cnt).map(s => [s,s]))
+      this.notifierSlot.container(cnt.idGet()).dispatchEvent(
+        new EventContainerChange(this.playfield, this.playfield, cnt.idGet(), Array.from(cnt).map(s => [s,s]))
       )
     }
   }
@@ -243,7 +250,13 @@ class App {
   }
 
   sync(idPeer='') {
-    const data = { sync: { game: this.game.id(), playfield: this.playfield.serialize() } }
+    const data = {
+      sync: {
+        game: this.game.idGet(),
+        playfield: this.playfield.serialize(),
+        maxPlayers: this.maxPlayers
+      }
+    }
     if (idPeer)
       this.connections.peerById(idPeer)?.send(data)
     else
@@ -261,7 +274,7 @@ class App {
   onReceiveData(data:any, registrant:any, peer:PeerPlayer) {
     if (data.chern) {
       for (const id of data.chern.idPeers)
-        if (id != registrant.id)
+        if (id != registrant.id && !this.connections.peerById(id))
           registrant.connect(id)
     } else if (data.ping) {
       //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping.secs))
@@ -269,14 +282,16 @@ class App {
     } else if (data.ping_back) {
       //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
     } else if (data.sync) {
+      this.maxPlayers = data.sync.maxPlayers
       this.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
+      this.maxPlayersSet(data.sync.maxPlayers)
       dom.demandById("game-type", HTMLSelectElement).value = data.sync.game
     } else if (data.askSync) {
-      this.sync(peer.id())
+      this.sync(peer.idGet())
     } else if (data.peerUpdate) {
       // Sync peer player chosen players from message
       for (const peerPlayer of data.peerUpdate.peerPlayers) {
-        const player = this.game.players.find((p) => p.id == peerPlayer.player.id)
+        const player = this.game.players.find((p) => p.idGet() == peerPlayer.player)
         assert(player)
         
         if (peerPlayer.id == this.connections.registrantId()) {
@@ -310,7 +325,7 @@ class App {
 
   onPeerConnect(metadata:any, peer:PeerPlayer):void {
     if (metadata != 'reconnect')
-      this.sync(peer.id()) // tbd: check playfield sequence # and only sync if necessary
+      this.sync(peer.idGet()) // tbd: check playfield sequence # and only sync if necessary
   }
 
   playerGetForPeer(peerId:string):[Player|undefined, string] {
@@ -325,8 +340,8 @@ class App {
   
   serialize() {
     return {
-      game: this.game.id(),
-      viewer: this.viewer.id(),
+      game: this.game.idGet(),
+      viewer: this.viewer.idGet(),
       playfield: this.playfield.serialize(),
       maxPlayers: this.maxPlayers
     }
@@ -353,8 +368,11 @@ class App {
   }
 
   maxPlayersSet(max:number) {
-    this.maxPlayers = max
-    this.uiCreate()
+    if (max != this.maxPlayers) {
+      this.maxPlayers = max
+      this.uiCreate()
+    }
+    this.onMaxPlayers(this.maxPlayers)
   }
   
   maxPlayersGet() { return this.maxPlayers }
@@ -631,7 +649,9 @@ function run(urlCards:string, urlCardBack:string) {
     new UISlotRoot(),
     (game:Game) => {
       elMaxPlayers.max = game.playersActive().length.toString()
-      elMaxPlayers.value = app.maxPlayersGet().toString()
+    },
+    (maxPlayers:number) => {
+      elMaxPlayers.value = maxPlayers.toString()
     }
   )
 
@@ -649,7 +669,7 @@ function run(urlCards:string, urlCardBack:string) {
     tblPlayers.innerHTML = ''
     for (const peer of e.peers) {
       const row = tblPlayers.insertRow()
-      row.insertCell().innerText = peer.id()
+      row.insertCell().innerText = peer.idGet()
       row.insertCell().innerText = peer.open() ? 'Connected' : 'Disconnected'
     }
   })
@@ -704,14 +724,14 @@ function run(urlCards:string, urlCardBack:string) {
   
   elMaxPlayers.addEventListener(
     "change",
-    () => app.maxPlayersSet(Number(elMaxPlayers.value))
+    () => { app.maxPlayersSet(Number(elMaxPlayers.value)); app.sync() }
   )
   
   dom.withElement("game-type", HTMLSelectElement, (elGames) => {
     for (const game of app.games) {
       const opt = document.createElement("option")
       opt.text = game.description
-      opt.value = game.id()
+      opt.value = game.idGet()
       elGames.add(opt)
     }
     elGames.addEventListener(
@@ -741,6 +761,7 @@ function run(urlCards:string, urlCardBack:string) {
       const state = {
         id: dom.demandById("peerjs-id", HTMLInputElement).value,
         target: dom.demandById("peerjs-target", HTMLInputElement).value,
+        host: dom.demandById("peerjs-host", HTMLInputElement).value,
         app: app.serialize()
       }
       
@@ -754,8 +775,9 @@ function run(urlCards:string, urlCardBack:string) {
       const serialized = JSON.parse(state)
       dom.demandById("peerjs-id", HTMLInputElement).value = serialized.id
       dom.demandById("peerjs-target", HTMLInputElement).value = serialized.target
+      dom.demandById("peerjs-host", HTMLInputElement).value = serialized.host
       app.restore(serialized.app)
-      dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().id()
+      dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().idGet()
     }
 
     return state != undefined
@@ -764,10 +786,10 @@ function run(urlCards:string, urlCardBack:string) {
   dom.demandById("load").addEventListener("click", restore)
 
   try {
-    restore() || app.newGame(app.gameGet().id())
+    restore() || app.newGame(app.gameGet().idGet())
   } catch(e) {
     errorHandler("Problem restoring game state: " + e)
-    app.newGame(app.gameGet().id())
+    app.newGame(app.gameGet().idGet())
   }
 }
 
@@ -797,7 +819,7 @@ function test() {
       )
 
     if (app.playfield.container("stock").isEmpty()) {
-      appGlobal.newGame(appGlobal.gameGet().id())
+      appGlobal.newGame(appGlobal.gameGet().idGet())
     }
     
     window.setTimeout(

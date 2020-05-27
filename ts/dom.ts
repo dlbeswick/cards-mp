@@ -9,9 +9,9 @@ export function demandById<T extends HTMLElement=HTMLElement>(id:string, klass?:
   
   const result = document.getElementById(id)
   if (result == undefined) {
-    throw new Error(`Element '${id}' not found`)
+    throw new Error(`DOM element '${id}' not found`)
   } else if (!(result instanceof klass_)) {
-    throw new Error(`Element '${id}' is not '${klass}', but is '${result.constructor.name}'`)
+    throw new Error(`DOM element '${id}' is not '${klass}', but is '${result.constructor.name}'`)
   } else {
     return result as T
   }

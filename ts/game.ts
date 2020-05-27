@@ -22,18 +22,18 @@ interface Identified {
 }
 
 abstract class IdentifiedByVal<IdType> implements Identified {
-  abstract id():IdType
+  abstract idGet():IdType
   
   is(rhs:this):boolean {
-    return this.isId(rhs.id())
+    return this.isId(rhs.idGet())
   }
   
   isId(id:IdType):boolean {
-    return this.id() == id
+    return this.idGet() == id
   }
 
   serialize(): any {
-    return { id: this.id() }
+    return { id: this.idGet() }
   }
 }
 
@@ -45,7 +45,7 @@ abstract class IdentifiedVar<IdType=string> extends IdentifiedByVal<IdType> {
     this._id = id
   }
 
-  id():IdType {
+  idGet():IdType {
     return this._id
   }
 }
@@ -74,17 +74,17 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
   }
   
   add(slots:S[]):this {
-    return this.construct(this.id(), this.slots.concat(slots), this.secret)
+    return this.construct(this.idGet(), this.slots.concat(slots), this.secret)
   }
 
   slot(id:number):S {
-    const slot = this.slots.find(s => s.isId(id, this.id()))
+    const slot = this.slots.find(s => s.isId(id, this.idGet()))
     assert(slot, "No slot of id", id)
     return slot
   }
   
   clear():this {
-    return this.construct(this.id(), [], this.secret)
+    return this.construct(this.idGet(), [], this.secret)
   }
   
   isEmpty():boolean {
@@ -115,12 +115,12 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
         const idx = this.slots.findIndex(s => s.is(slot))
         assert(idx != -1, "Slot not found in update", slot.id, slot.idCnt)
         return this.construct(
-          this.id(),
+          this.idGet(),
           this.slots.slice(0, idx).concat([slot_] as S[]).concat(this.slots.slice(idx+1)),
           this.secret
         )
       } else {
-        return this.construct(this.id(), this.slots.concat([slot_] as S[]), this.secret)
+        return this.construct(this.idGet(), this.slots.concat([slot_] as S[]), this.secret)
       }
     } else {
       return this
@@ -342,7 +342,7 @@ export class WorldCard extends IdentifiedVar<string> {
   readonly faceUpIsConscious:boolean
   readonly turned:boolean
 
-  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false, id=card.id()) {
+  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false, id=card.idGet()) {
     super(id)
     this.card = card
     this.faceUp = faceUp
@@ -706,10 +706,10 @@ export class PeerPlayer extends IdentifiedVar {
       window.setTimeout(() => this.keepConnected(timeout, 2000, 0), timeout)
     } else {
       if (reconnects < 5) {
-        console.log("Lost peer connection, trying to reconnect", this.id(), reconnects, failTimeout)
+        console.log("Lost peer connection, trying to reconnect", this.idGet(), reconnects, failTimeout)
         
         this.conns.connect(
-          this.id(),
+          this.idGet(),
           (peerId:string) => [this.player, ""],
           (peerPlayer, conn) => {
             this.conn = conn
@@ -718,7 +718,7 @@ export class PeerPlayer extends IdentifiedVar {
         
         window.setTimeout(() => this.keepConnected(timeout, failTimeout * 2, ++reconnects), failTimeout)
       } else {
-        console.warn(`Can't reconnect to peer ${this.id()} after ${reconnects} tries`)
+        console.warn(`Can't reconnect to peer ${this.idGet()} after ${reconnects} tries`)
         this.conns.onPeerLost(this)
       }
     }
@@ -736,7 +736,7 @@ export class PeerPlayer extends IdentifiedVar {
   }
 
   serialize():any {
-    return { ...super.serialize(), player: this.player.id }
+    return { ...super.serialize(), player: this.player.idGet() }
   }
 }
 
@@ -768,7 +768,7 @@ export class Connections {
     assertf(() => !this.registering)
     
     if (this.registrant) {
-      if (id == this.registrant.id()) {
+      if (id == this.registrant.id) {
         if (this.registrant.disconnected) {
           dom.demandById("peerjs-status").innerHTML = "Re-registering" // move this
           this.registrant.reconnect()
@@ -784,8 +784,12 @@ export class Connections {
     }
 
     this.registering = true
-    
-    const registrant = new Peer(id)
+
+    const host = dom.demandById("peerjs-host", HTMLInputElement).value.split('/')[0]
+    const path = dom.demandById("peerjs-host", HTMLInputElement).value.split('/')[1]
+    const connection =
+      host ? {host: host.split(':')[0], port: host.split(':')[1] ?? 9000, path: path ?? '/'} : undefined
+    const registrant = new Peer(id, connection)
 
     registrant.on('error', (err:any) => {
       this.registering = false
@@ -820,7 +824,7 @@ export class Connections {
           conn.peer,
           playerGet,
           (peer:PeerPlayer, _:any) => {
-            this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.id())}})
+            this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.idGet())}})
             onPeerConnect(conn.metadata, peer)
           }
         )
@@ -912,12 +916,12 @@ export class Connections {
   }
 
   onPeerError(peer:PeerPlayer, error:any) {
-    console.log('Peer connection error', peer.id, error)
+    console.log('Peer connection error', peer.idGet(), error)
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 
   onPeerLost(peer:PeerPlayer) {
-    this.peers.delete(peer.id())
+    this.peers.delete(peer.idGet())
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 }
