@@ -1010,7 +1010,7 @@ export class GameDummy extends Game {
 export class GamePoker extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("poker", "Poker", makeUi,
-          array.range(8).map(i => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
+          array.range(8).map((_,i) => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
   }
   
   playfield(players:number):Playfield {
@@ -1030,8 +1030,7 @@ export class GamePoker extends Game {
          new ContainerSlotCard("stock", [new SlotCard(0, "stock", deck.map(c => new WorldCard(c, false)))])]
       ),
       this.players.map((p,idx) => new ContainerSlotChip(p.idCnts[1], chips(p.idCnts[1], idx))).concat(
-        [new ContainerSlotChip("p1-chip", chips("p1-chip", 4096)),
-         new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
+        [new ContainerSlotChip("ante", [new SlotChip(0, "ante"), new SlotChip(1, "ante"), new SlotChip(2, "ante"),
                                         new SlotChip(3, "ante")])
         ]
       )
@@ -1042,7 +1041,7 @@ export class GamePoker extends Game {
 export class GamePokerChinese extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("poker-chinese", "Chinese Poker", makeUi,
-          array.range(4).map(i => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
+          array.range(4).map((_,i) => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
   }
   
   deal(players:number, playfield:Playfield) {
@@ -1058,12 +1057,13 @@ export class GamePokerChinese extends Game {
        ]
     
     return new Playfield(
-      this.players.map(p => new ContainerSlotCard(p.idCnts[0], [new SlotCard(0, p.idCnts[0])])).concat(
-        [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
-         new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
-         new ContainerSlotCard("p0-show", array.range(3).map((_,i) => new SlotCard(i, "p0-show"))),
-         new ContainerSlotCard("p1-show", array.range(3).map((_,i) => new SlotCard(i, "p1-show"))),
-         new ContainerSlotCard("stock", [new SlotCard(0, "stock", shuffled(deck52()).map(c => new WorldCard(c, false)))])
+      this.players.flatMap(p => [
+        new ContainerSlotCard(p.idCnts[0], [new SlotCard(0, p.idCnts[0])]),
+        new ContainerSlotCard(p.idCnts[0] + "-show",
+                              array.range(3).map((_,i) => new SlotCard(i, p.idCnts[0] + "-show"))),
+      ]).concat(
+        [
+          new ContainerSlotCard("stock", [new SlotCard(0, "stock", shuffled(deck52()).map(c => new WorldCard(c, false)))])
         ]
       ),
       this.players.map((p,idx) => new ContainerSlotChip(p.idCnts[1], chips(p.idCnts[1], idx))).concat(

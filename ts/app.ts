@@ -40,7 +40,7 @@ class App {
   readonly urlCardBack:string
   readonly connections:Connections = new Connections()
   readonly games:Game[]
-  readonly maxPlayers:number = 2
+  private maxPlayers:number = 2
   private root:UISlotRoot
   private cardWidth = 74
   private cardHeight = 112
@@ -49,7 +49,8 @@ class App {
   private audioCtx?:AudioContext
   private playfield = new Playfield([], [])
   
-  constructor(games:Game[], notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, root:UISlotRoot) {
+  constructor(games:Game[], notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, root:UISlotRoot,
+              readonly onNewGame:(game:Game) => void = () => {}) {
     assertf(() => games)
     this.games = games
     this.game = games[0]
@@ -90,17 +91,20 @@ class App {
     }
 
     this.game = game
+    this.maxPlayers = Math.min(this.maxPlayers, this.game.playersActive().length)
     this.playfield = playfield ?? this.game.playfield(this.maxPlayers)
     this.viewerSet(
       this.game.players.find(p => p.id() == viewerId) ??
         this.game.players.find(p => p.id() == this.viewer?.id()) ??
         this.game.players[0]
-    )
+    ) || this.uiCreate()
+
+    this.onNewGame(this.game)
   }
 
   newHand() {
     this.playfield = this.game.playfieldNewHand(this.maxPlayers, this.playfield)
-    this.viewerSet(this.viewer)
+    this.uiCreate()
   }
   
   cardSizeSet(width:number, height:number) {
@@ -111,13 +115,18 @@ class App {
   cardWidthGet() { return this.cardWidth }
   cardHeightGet() { return this.cardHeight }
   
-  viewerSet(viewer:Player) {
+  viewerSet(viewer:Player):boolean {
     assertf(() => this.game)
     if (this.viewer == viewer)
-      return
+      return false
     
     this.viewer = viewer
+    this.uiCreate()
+    return true
+  }
 
+  protected uiCreate() {
+    assert(this.game)
     this.root.destroy()
     this.root = new UISlotRoot()
     this.game.makeUi(this.playfield, this)
@@ -343,6 +352,13 @@ class App {
     window.setTimeout(step.bind(this, this.playfield), 250)
     return false
   }
+
+  maxPlayersSet(max:number) {
+    this.maxPlayers = max
+    this.uiCreate()
+  }
+  
+  maxPlayersGet() { return this.maxPlayers }
 }
 
 let appGlobal:App
@@ -529,27 +545,31 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
   const viewer = app.viewerGet()
   const player = viewer.idCnts[0] ? viewer : app.gameGet().players[0]
   assert(player)
-  const opponent = app.gameGet().players.find(p => p.idCnts[0] && p != player)
-  assert(opponent)
+  const opponents = app.gameGet().playersActive().filter(p => p != player).slice(0, app.maxPlayersGet()-1)
 
   root.add(
-    new UIContainerFlex('aware').with(cnt => {
-      cnt.add(
-        new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                         app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
-                         'flip', ['Deal', () => app.dealInteractive()]).init()
-      )
-      cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
-      cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
-    })
+    new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
+                     app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                           'flip', ['Deal', () => app.dealInteractive()]).init()
   )
   
-  root.add(
-    new UIContainerFlex().with(cnt => {
-      for (let i=0; i<3; ++i)
-        cnt.add(makeUiPlayerCards(app, opponent.idCnts[0] + "-show", opponent, viewer, playfield, i, ['aware']))
-    })
-  )
+  for (const opponent of opponents) {
+    root.add(
+      new UIContainerFlex('aware').with(cnt => {
+        cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
+        cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
+      })
+    )
+  }
+
+  for (const opponent of opponents) {
+    root.add(
+      new UIContainerFlex().with(cnt => {
+        for (let i=0; i<3; ++i)
+          cnt.add(makeUiPlayerCards(app, opponent.idCnts[0] + "-show", opponent, viewer, playfield, i, ['aware']))
+      })
+    )
+  }
   
   root.add(
     new UIContainerFlex().with(cnt => {
@@ -576,6 +596,8 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
 }
 
 function run(urlCards:string, urlCardBack:string) {
+  const elMaxPlayers = dom.demandById("max-players", HTMLInputElement)
+  
   const app = new App(
     [
       new GameGinRummy(makeUiGinRummy),
@@ -586,7 +608,11 @@ function run(urlCards:string, urlCardBack:string) {
     new NotifierSlot(),
     urlCards,
     urlCardBack,
-    new UISlotRoot()
+    new UISlotRoot(),
+    (game:Game) => {
+      elMaxPlayers.max = game.playersActive().length.toString()
+      elMaxPlayers.value = app.maxPlayersGet().toString()
+    }
   )
 
   app.init()
@@ -656,6 +682,11 @@ function run(urlCards:string, urlCardBack:string) {
     }
   )
   
+  elMaxPlayers.addEventListener(
+    "change",
+    () => app.maxPlayersSet(Number(elMaxPlayers.value))
+  )
+  
   dom.withElement("game-type", HTMLSelectElement, (elGames) => {
     for (const game of app.games) {
       const opt = document.createElement("option")
@@ -711,12 +742,6 @@ function run(urlCards:string, urlCardBack:string) {
     }
   )
 
-  dom.demandById("players-max").addEventListener(
-    "change",
-    () => {
-    }
-  )
-  
   app.run(dom.demandById("game-type", HTMLSelectElement).value)
 }
 
