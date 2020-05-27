@@ -76,10 +76,6 @@ class App {
                                                  (e:EventPlayfieldChange) => this.playfield = e.playfield_)
   }
                                          
-  run(gameId:string) {
-    this.newGame(gameId)
-  }
-
   rootGet():UISlotRoot {
     return this.root
   }
@@ -110,6 +106,7 @@ class App {
   cardSizeSet(width:number, height:number) {
     this.cardWidth = width
     this.cardHeight = height
+    this.uiCreate()
   }
 
   cardWidthGet() { return this.cardWidth }
@@ -330,11 +327,13 @@ class App {
     return {
       game: this.game.id(),
       viewer: this.viewer.id(),
-      playfield: this.playfield.serialize()
+      playfield: this.playfield.serialize(),
+      maxPlayers: this.maxPlayers
     }
   }
 
   restore(serialized:any) {
+    this.maxPlayers = serialized.maxPlayers
     this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield), serialized.viewer)
     this.sync()
   }
@@ -371,12 +370,16 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
   const opponent:Player = app.gameGet().players.find(p => p.idCnts[0] && p != player)!
   assertf(() => opponent)
   
-  const uislotOpp = new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
-                                     app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                     app.cardHeightGet(), '100%')
-  uislotOpp.init()
-  root.add(uislotOpp)
-
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      cnt.add(
+        new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
+                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                         app.cardHeightGet(), '100%').init()
+      )
+    })
+  )
+  
   root.add(
     new UIContainerFlex().with(cnt => {
       
@@ -411,53 +414,65 @@ function makeUiDummy(playfield:Playfield, app:App) {
   const opponent:Player = app.gameGet().players.find(p => p.idCnts[0] && p != player)!
   assertf(() => opponent)
   
-  const uislotTop = new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
-                                     app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                     app.cardHeightGet(), '100%')
-  uislotTop.init()
-  root.add(uislotTop)
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      cnt.add(
+        new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
+                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                         app.cardHeightGet(), '100%').init()
+      )
+    })
+  )
 
-  const divPlay = new UIContainerFlex('column')
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      cnt.add(
+        new UIContainerSlotsMulti(opponent.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
+                                  app.notifierSlot, app.urlCards, app.urlCardBack,
+                                  app.cardWidthGet(), app.cardHeightGet(), 'turn').init()
+      )
+    })
+  )
   
-  const uislotMeldOpp = new UIContainerSlotsMulti(opponent.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
-                                                  app.notifierSlot, app.urlCards, app.urlCardBack,
-                                                  app.cardWidthGet(), app.cardHeightGet(), `${app.cardHeightGet()}px`,
-                                                  'turn')
-  uislotMeldOpp.init()
-  uislotMeldOpp.element.style.flexGrow = "1" // tbd: encode in UIElement
-  divPlay.add(uislotMeldOpp)
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      cnt.add(
+        new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
+                         app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                         '100%', undefined, undefined, 'flip', 'all-proceeding').init()
+      )
+    })
+  )
   
-  const uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                       app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
-                                       '100%', undefined, undefined, 'flip', 'all-proceeding')
-  uislotWaste.init()
-  uislotWaste.element.style.flexGrow = "1" // tbd: encode in UIElement
-  divPlay.add(uislotWaste)
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      cnt.add(
+        new UIContainerSlotsMulti(player.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
+                                  app.notifierSlot, app.urlCards, app.urlCardBack,
+                                  app.cardWidthGet(), app.cardHeightGet(), 'turn').init()
+      )
+    })
+  )
   
-  const uislotMeldPlay = new UIContainerSlotsMulti(player.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
-                                                   app.notifierSlot, app.urlCards, app.urlCardBack,
-                                                   app.cardWidthGet(), app.cardHeightGet(), `${app.cardHeightGet()}px`,
-                                                   'turn')
-  uislotMeldPlay.init()
-  uislotMeldPlay.element.style.flexGrow = "1"  // tbd: encode in UIElement
-  divPlay.add(uislotMeldPlay)
-  
-  root.add(divPlay)
-  
-  const divCombiner = new UIContainerFlex('row', true)
-  divPlay.add(divCombiner)
-  
-  const uislotBottom = new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
-                                        app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                                        app.cardHeightGet(), '100%')
-  uislotBottom.init()
-  root.add(uislotBottom)
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      cnt.add(
+        new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
+                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                         app.cardHeightGet(), '100%').init()
+      )
+    })
+  )
 
-  const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                       app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
-                                       'flip', ['Deal', () => app.dealInteractive()])
-  uislotStock.init()
-  root.add(uislotStock)
+  root.add(
+    new UIContainerFlex().with(cnt => {
+      cnt.add(
+        new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
+                         app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                         'flip', ['Deal', () => app.dealInteractive()]).init()
+      )
+    })
+  )
 }
 
 function makeUiPlayerChips(app:App, owner:Player, viewer:Player, playfield:Playfield) {
@@ -728,21 +743,27 @@ function run(urlCards:string, urlCardBack:string) {
     }
   )
 
-  dom.demandById("load").addEventListener(
-    "click",
-    () => {
-      const state = window.localStorage.getItem("state")
-      if (state) {
-        const serialized = JSON.parse(state)
-        dom.demandById("peerjs-id", HTMLInputElement).value = serialized.id
-        dom.demandById("peerjs-target", HTMLInputElement).value = serialized.target
-        app.restore(serialized.app)
-        dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().id()
-      }
+  function restore() {
+    const state = window.localStorage.getItem("state")
+    if (state) {
+      const serialized = JSON.parse(state)
+      dom.demandById("peerjs-id", HTMLInputElement).value = serialized.id
+      dom.demandById("peerjs-target", HTMLInputElement).value = serialized.target
+      app.restore(serialized.app)
+      dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().id()
     }
-  )
 
-  app.run(dom.demandById("game-type", HTMLSelectElement).value)
+    return state != undefined
+  }
+  
+  dom.demandById("load").addEventListener("click", restore)
+
+  try {
+    restore() || app.newGame(app.gameGet().id())
+  } catch(e) {
+    errorHandler("Problem restoring game state: " + e)
+    app.newGame(app.gameGet().id())
+  }
 }
 
 function test() {

@@ -3,6 +3,15 @@ import * as dom from "./dom.js"
 import { Card, Chip, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventPlayfieldChange, EventSlotChange, NotifierSlot, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot, WorldCard } from './game.js'
 import { Vector } from './math.js'
 
+function cardFaceUp(isSecretContainer:boolean, wc:WorldCard) {
+  let faceUp
+  if (wc.faceUpIsConscious)
+    faceUp = wc.faceUp
+  else
+    faceUp = !isSecretContainer
+  return wc.withFaceUp(faceUp)
+}
+
 abstract class UIElement {
   readonly element:HTMLElement
   protected readonly events:dom.EventListeners
@@ -58,12 +67,13 @@ abstract class UIContainer extends UIElement {
 export class UIContainerDiv extends UIContainer {
   constructor() {
     super(document.createElement("div"))
+    this.element.classList.add("container")
   }
 }
 
-export class UIContainerFlex extends UIContainer {
+export class UIContainerFlex extends UIContainerDiv {
   constructor(direction:string|undefined='row', grow=false) {
-    super(document.createElement("div"))
+    super()
     this.element.style.display = 'flex'
     this.element.style.direction = 'ltr'
     if (grow)
@@ -221,14 +231,7 @@ abstract class UISlotCard extends UIActionable {
       
       const slotSrc_ = slotSrc.remove(cardsSrc)
       
-      const slotDst_ = slotDst.add(cardsSrc.map(wc => {
-        let faceUp
-        if (wc.faceUpIsConscious)
-          faceUp = wc.faceUp
-        else
-          faceUp = !slotDst.container(this.playfield).secret
-        return wc.withFaceUp(faceUp)
-      }))
+      const slotDst_ = slotDst.add(cardsSrc.map(wc => cardFaceUp(slotDst.container(this.playfield).secret, wc)))
       
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
       this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
@@ -319,7 +322,6 @@ export class UISlotSpread extends UISlotCard {
     this.classesCard = classesCard
     if (width)
       this.element.style.width = width
-    this.element.style.minHeight = `${cardHeight+25}px`
     this.element.classList.add(...classesSlot)
     this.containerEl = document.createElement("div")
     this.element.appendChild(this.containerEl)
@@ -406,6 +408,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, notifierSlot)
 
     this.element.classList.add("slot")
+    this.element.classList.add("slot-multi")
     this.element.style.minHeight = height
     this.actionLongPress = actionLongPress
     this.urlCards = urlCards
@@ -428,7 +431,8 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     const slotSrc = selected[0].uislot.slot()
     const slotSrc_ = slotSrc.remove(cardsSrc)
     const cnt:ContainerSlotCard = this.playfield.container(this.idCnt)
-    const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id(), cardsSrc)
+    const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id(),
+                                  cardsSrc.map(wc => cardFaceUp(false, wc)))
 
     const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [undefined, slotDst_]]
     this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
@@ -840,7 +844,8 @@ export class UICard extends UIMovable {
       this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
     } else {
       const slotSrc_ = slotSrc.remove(cardsSrc)
-      const slotDst_ = slotDst.add(cardsSrc, this.wcard)
+      const slotDst_ = slotDst.add(cardsSrc.map(wc => cardFaceUp(slotDst.container(this.playfield).secret, wc)),
+                                   this.wcard)
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
       this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
     }
