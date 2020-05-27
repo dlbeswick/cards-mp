@@ -542,7 +542,7 @@ function makeUiPoker(playfield:Playfield, app:App) {
     new UIContainerFlex('aware-reverse').with(cnt => {
       cnt.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
       cnt.add(
-        new UIContainerFlex('row', false).with(cnt => {
+        new UIContainerFlex('row', false, 'container-tight').with(cnt => {
           for (let i=0; i<4; ++i)
             cnt.add(
               new UISlotChip('ante', app.selection, null, viewer, playfield, app.notifierSlot, i,
@@ -596,6 +596,11 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
   root.add(
     new UIContainerFlex('aware').with(cnt => {
       cnt.add(makeUiPlayerCards(app, player.idCnts[0], player, viewer, playfield))
+    })
+  )
+  
+  root.add(
+    new UIContainerFlex('aware').with(cnt => {
       cnt.add(
         new UIContainerFlex('row',false,'container-tight').with(cnt => {
           for (let i=0; i<4; ++i)
