@@ -710,7 +710,9 @@ export class PeerPlayer extends IdentifiedVar {
         this.conns.connect(
           this.idGet(),
           this.playerGetFunc,
-          (peerPlayer, conn) => { this.conn = conn }
+          (peerPlayer, conn) => { this.conn = conn },
+          false,
+          true
         )
         
         window.setTimeout(() => this.keepConnected(timeout, failTimeout * 2, ++reconnects), failTimeout)
@@ -773,7 +775,9 @@ export class Connections {
            onPeerConnect:(metadata:any, peer:PeerPlayer) => void,
            onReceive:(data:any, peer:PeerPlayer) => void,
            playerGet:(peerId:string) => [Player|undefined, Player, string],
-           registrantPlayerGet:() => Player) {
+           registrantPlayerGet:() => Player,
+           maxPlayersGet:() => number
+          ) {
     
     assertf(() => id)
     assertf(() => !this.registering)
@@ -789,7 +793,7 @@ export class Connections {
         dom.demandById("peerjs-status").innerHTML = "Re-registering"
         this.registrant.disconnect()
         this.registrant = null
-        this.register(id, onPeerConnect, onReceive, playerGet, registrantPlayerGet)
+        this.register(id, onPeerConnect, onReceive, playerGet, registrantPlayerGet, maxPlayersGet)
       }
       return
     }
@@ -841,17 +845,23 @@ export class Connections {
             conn.peer,
             playerGet,
             (peer:PeerPlayer, _:any) => {
-              this.broadcast({
-                chern: {
-                  connecting: conn.peer,
-                  peers: Array.
-                    from(this.peers.values()).
-                    map(p => p.serialize()).
-                    concat({id: this.registrantId(), player: registrantPlayerGet().idGet()})
-                }
-              })
+              if ((!conn.metadata.isReconnect && !conn.metadata.isReply) ||
+                  (conn.metadata.isReconnect && conn.metadata.isReply)) {
+                this.broadcast({
+                  chern: {
+                    connecting: conn.peer,
+                    peers: Array.
+                      from(this.peers.values()).
+                      map(p => p.serialize()).
+                      concat({id: this.registrantId(), player: registrantPlayerGet().idGet()}),
+                    maxPlayers: maxPlayersGet()
+                  }
+                })
+              }
               onPeerConnect(conn.metadata, peer)
-            }
+            },
+            true,
+            conn.metadata.isReconnect
           )
         }
       }
@@ -880,7 +890,7 @@ export class Connections {
   }
   
   connect(idPeer:string, playerGet:(peerId:string) => [Player|undefined, Player, string],
-          onConnect?:(peer:PeerPlayer, conn:any) => void) {
+          onConnect?:(peer:PeerPlayer, conn:any) => void, isReply=false, isReconnect=false) {
     
     assertf(() => idPeer)
     
@@ -900,18 +910,20 @@ export class Connections {
           if (player) {
             peerPlayer = new PeerPlayer(idPeer, this, player, playerGet)
             this.peers.set(idPeer, peerPlayer)
-            this.onPeerUpdate(registrantPlayer)
           } else {
             throw new Error("No available players for connection to peer " + idPeer)
           }
         }
         
-        console.log("Attempting " + (peerPlayer ? "re-" : '') + "connection to peer", idPeer)
+        console.log("Attempting " + (peerPlayer.connectingGet() ? '' : "re-") + "connection to peer", idPeer)
         const conn = this.registrant.connect(
           idPeer,
           {
             reliable: true,
-            metadata: peerPlayer ? 'reconnect' : undefined
+            metadata: {
+              isReconnect: isReconnect,
+              isReply: isReply
+            }
           }
         )
         
