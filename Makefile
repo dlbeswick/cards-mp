@@ -6,13 +6,13 @@ OUTPUTS = $(subst .ts,.js,$(subst ts/,www/js/,$(wildcard ts/*.ts)))
 
 .PHONY: clean serve build run run-emu cordova cordova-prepare browser 
 
-www/js/dependencies/peerjs.min.js: node_modules/peerjs/dist/peerjs.min.js
-	cp $< $@
-
-build: www/js www/css www/css/app.css www/js/dependencies www/js/dependencies/peerjs.min.js $(OUTPUTS)
-
 browser: build
 	"$(CORDOVA)" build browser
+
+build: www/css www/js/dependencies www/js/dependencies/peerjs.min.js $(OUTPUTS) www/css/app.css
+
+www/js/dependencies/peerjs.min.js: node_modules/peerjs/dist/peerjs.min.js
+	cp $< $@
 
 cordova: cordova-prepare
 	"$(CORDOVA)" compile
@@ -27,7 +27,7 @@ www/css :
 	mkdir -p $@
 
 $(OUTPUTS): www/js/%.js: ts/%.ts
-	"$(TYPESCRIPT)" --noEmitOnError --strict --target es2019 --module es2015 --outDir $(@D) $<
+	"$(TYPESCRIPT)" --listEmittedFiles --noEmitOnError --strict --target es2019 --module es2015 --outDir $(@D) $<
 
 www/css/app.css : sass/app.scss
 	"$(SASS)" $< $@

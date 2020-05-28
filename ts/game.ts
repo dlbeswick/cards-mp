@@ -688,17 +688,16 @@ export class Playfield {
 declare var Peer:any
 
 export class PeerPlayer extends IdentifiedVar {
-  private conn:any
+  private conn?:any
   private player:Player
+  private connecting:boolean = true
   private readonly conns:Connections
   
-  constructor(id:string, conn:any, conns:Connections, player:Player) {
+  constructor(id:string, conns:Connections, player:Player,
+              readonly playerGetFunc:(peerId:string) => [Player|undefined, Player, string]) {
     super(id)
-    this.conn = conn
     this.conns = conns
     this.player = player
-
-    this.keepConnected()
   }
 
   keepConnected(timeout=15000, failTimeout=2000, reconnects=0) {
@@ -710,10 +709,8 @@ export class PeerPlayer extends IdentifiedVar {
         
         this.conns.connect(
           this.idGet(),
-          (peerId:string) => [this.player, ""],
-          (peerPlayer, conn) => {
-            this.conn = conn
-          }
+          this.playerGetFunc,
+          (peerPlayer, conn) => { this.conn = conn }
         )
         
         window.setTimeout(() => this.keepConnected(timeout, failTimeout * 2, ++reconnects), failTimeout)
@@ -724,14 +721,27 @@ export class PeerPlayer extends IdentifiedVar {
     }
   }
 
+  connectingGet() { return this.connecting }
+  
+  onOpened(conn:any) {
+    const firstConnection = this.conn === undefined
+    this.conn = conn
+    this.connecting = false
+
+    if (firstConnection)
+      this.keepConnected()
+  }
+  
   open():boolean {
-    return this.conn.open
+    return this.conn?.open
   }
 
   playerGet():Player { return this.player }
   playerChange(player:Player):void { this.player = player }
   
   send(data:any) {
+    assert(this.open())
+    console.debug('Send to ' + this.idGet(), data)
     this.conn.send(data)
   }
 
@@ -761,8 +771,9 @@ export class Connections {
   
   register(id:string,
            onPeerConnect:(metadata:any, peer:PeerPlayer) => void,
-           onReceive:(data:any, registrant:any, peer:PeerPlayer) => void,
-           playerGet:(peerId:string) => [Player|undefined, string]) {
+           onReceive:(data:any, peer:PeerPlayer) => void,
+           playerGet:(peerId:string) => [Player|undefined, Player, string],
+           registrantPlayerGet:() => Player) {
     
     assertf(() => id)
     assertf(() => !this.registering)
@@ -778,7 +789,7 @@ export class Connections {
         dom.demandById("peerjs-status").innerHTML = "Re-registering"
         this.registrant.disconnect()
         this.registrant = null
-        this.register(id, onPeerConnect, onReceive, playerGet)
+        this.register(id, onPeerConnect, onReceive, playerGet, registrantPlayerGet)
       }
       return
     }
@@ -818,23 +829,39 @@ export class Connections {
 
     registrant.on('connection', (conn:any) => {
       console.log("Peer connected to us", conn)
+
+      // Provide full list of peer players and connecting registrant player here.
+      // Who has the most peers has authoritive player selection state.
       
-      if (!this.peerById(conn.peer) || !this.peerById(conn.peer)!.open()) {
-        this.connect(
-          conn.peer,
-          playerGet,
-          (peer:PeerPlayer, _:any) => {
-            this.broadcast({chern: {connecting: conn.peer, idPeers: Array.from(this.peers.values()).map(p => p.idGet())}})
-            onPeerConnect(conn.metadata, peer)
-          }
-        )
+      {
+        const peerPlayer = this.peerById(conn.peer)
+        
+        if (!peerPlayer || !peerPlayer.open()) {
+          this.connect(
+            conn.peer,
+            playerGet,
+            (peer:PeerPlayer, _:any) => {
+              this.broadcast({
+                chern: {
+                  connecting: conn.peer,
+                  peers: Array.
+                    from(this.peers.values()).
+                    map(p => p.serialize()).
+                    concat({id: this.registrantId(), player: registrantPlayerGet().idGet()})
+                }
+              })
+              onPeerConnect(conn.metadata, peer)
+            }
+          )
+        }
       }
 
       conn.on('data', (data:any) => {
-        console.debug('Received', data)
-
         const peer = this.peerById(conn.peer)
-        peer && onReceive(data, registrant, peer)
+
+        console.debug('Received from ' + conn.peer + ' in state open=' + peer?.open(), data)
+
+        peer && peer.open() && onReceive(data, peer)
       })
       
       conn.on('error', (e:any) => {
@@ -852,7 +879,7 @@ export class Connections {
     return Array.from(this.peers.values()).find((p) => p.playerGet() === player)
   }
   
-  connect(idPeer:string, playerGet:(peerId:string) => [Player|undefined, string],
+  connect(idPeer:string, playerGet:(peerId:string) => [Player|undefined, Player, string],
           onConnect?:(peer:PeerPlayer, conn:any) => void) {
     
     assertf(() => idPeer)
@@ -862,29 +889,38 @@ export class Connections {
         throw new Error("Can't connect to your own id")
       
       const peerPlayer = this.peers.get(idPeer)
-      if (peerPlayer && peerPlayer.open()) {
+      if (peerPlayer?.open()) {
         console.log("Peer connection already open", idPeer)
+      } else if (peerPlayer?.connectingGet()) {
+        console.log("Peer already connecting", idPeer)
       } else {
+        let peerPlayer = this.peers.get(idPeer)
+        if (!peerPlayer) {
+          const [player, registrantPlayer, message] = playerGet(idPeer)
+          if (player) {
+            peerPlayer = new PeerPlayer(idPeer, this, player, playerGet)
+            this.peers.set(idPeer, peerPlayer)
+            this.onPeerUpdate(registrantPlayer)
+          } else {
+            throw new Error("No available players for connection to peer " + idPeer)
+          }
+        }
+        
         console.log("Attempting " + (peerPlayer ? "re-" : '') + "connection to peer", idPeer)
-        const conn = this.registrant.connect(idPeer, {reliable: true, metadata: peerPlayer ? 'reconnect' : undefined})
+        const conn = this.registrant.connect(
+          idPeer,
+          {
+            reliable: true,
+            metadata: peerPlayer ? 'reconnect' : undefined
+          }
+        )
         
         conn.on('open', () => {
           console.log("Peer opened", conn)
 
-          let peerPlayer = this.peers.get(idPeer)
-          if (!peerPlayer) {
-            const [player, message] = playerGet(conn.peer)
-            if (player) {
-              peerPlayer = new PeerPlayer(conn.peer, conn, this, player)
-              this.peers.set(conn.peer, peerPlayer)
-              this.broadcast({peerUpdate: {peerPlayers: Array.from(this.peers.values()).map((p) => p.serialize())}})
-            } else {
-              conn.send({deny: {message: message}})
-              conn.close()
-            }
-          }
-
           assert(peerPlayer)
+          peerPlayer.onOpened(conn)
+
           onConnect && onConnect(peerPlayer, conn)
           
           this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
@@ -909,9 +945,10 @@ export class Connections {
     }
   }
 
-  broadcast(data:any) {
+  broadcast(data:any, exclusions:PeerPlayer[] = []) {
     for (const [id,peer] of this.peers) {
-      peer.send(data)
+      if (peer.open() && !exclusions.some(p => p.is(peer)))
+        peer.send(data)
     }
   }
 
@@ -924,6 +961,18 @@ export class Connections {
     this.peers.delete(peer.idGet())
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
+
+  onPeerUpdate(registrantPlayer:Player) {
+    const peers = this.peersGet().map((p) => p.serialize())
+    this.broadcast({
+      peerUpdate: {
+        peerPlayers: peers.concat([{id: this.registrantId(), player: registrantPlayer.idGet()}])
+      }
+    })
+    this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
+  }
+
+  peersGet() { return Array.from(this.peers.values()) }
 }
 
 export abstract class Game extends IdentifiedVar {
@@ -950,6 +999,10 @@ export abstract class Game extends IdentifiedVar {
     return this.players.filter(p => p.idCnts.length != 0)
   }
 
+  spectator():Player {
+    return this.players[this.players.length-1]
+  }
+  
   protected *dealEach(players:number, playfield:Playfield, cnt:number, ordering:(a:WorldCard, b:WorldCard) => number) {
     for (let i = 0; i < cnt; ++i)
       for (const p of this.playersActive().slice(0, players)) {
@@ -1014,7 +1067,7 @@ export class GameDummy extends Game {
 export class GamePoker extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("poker", "Poker", makeUi,
-          array.range(8).map((_,i) => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
+          array.range(8).map((_,i) => new Player('Player '+(i+1), ['p'+i, `p${i}-chip`])))
   }
   
   playfield(players:number):Playfield {
@@ -1045,7 +1098,7 @@ export class GamePoker extends Game {
 export class GamePokerChinese extends Game {
   constructor(makeUi:(...args:any) => any) {
     super("poker-chinese", "Chinese Poker", makeUi,
-          array.range(4).map((_,i) => new Player('Player '+i, ['p'+i, `p${i}-chip`])))
+          array.range(4).map((_,i) => new Player('Player '+(i+1), ['p'+i, `p${i}-chip`])))
   }
   
   deal(players:number, playfield:Playfield) {

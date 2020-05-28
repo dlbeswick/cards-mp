@@ -55,7 +55,8 @@ class App {
               urlCardBack:string,
               root:UISlotRoot,
               readonly onNewGame:(game:Game) => void = () => {},
-              readonly onMaxPlayers:(maxPlayers:number) => void = () => {}
+              readonly onMaxPlayers:(maxPlayers:number) => void = () => {},
+              readonly onPeerChanged:(peers:PeerPlayer[]) => void = () => {}
              ) {
     
     assertf(() => games)
@@ -271,11 +272,22 @@ class App {
     this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
   }
 
-  onReceiveData(data:any, registrant:any, peer:PeerPlayer) {
+  onReceiveData(data:any, peer:PeerPlayer) {
     if (data.chern) {
-      for (const id of data.chern.idPeers)
-        if (id != registrant.id && !this.connections.peerById(id))
-          registrant.connect(id)
+      for (const peer of data.chern.peers) {
+        const player = this.game.players.find(p => p.isId(peer.player))
+        assert(player, "Unknown player", peer)
+        if (peer.id == this.connections.registrantId()) {
+          this.viewerSet(player)
+        } else if (!this.connections.peerById(peer.id)) {
+          this.connections.connect(peer.id, this.playerGetForPeer.bind(this))
+        } else {
+          const peerPlayer = this.connections.peerById(peer.id)
+          assert(peerPlayer)
+          peerPlayer.playerChange(player)
+        }
+      }
+      this.onPeerChanged(this.connections.peersGet())
     } else if (data.ping) {
       //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping.secs))
       peer.send({ping_back: {secs: data.ping.secs}})
@@ -284,22 +296,22 @@ class App {
     } else if (data.sync) {
       this.maxPlayers = data.sync.maxPlayers
       this.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
-      this.maxPlayersSet(data.sync.maxPlayers)
-      dom.demandById("game-type", HTMLSelectElement).value = data.sync.game
+      this.onMaxPlayers(this.maxPlayers)
     } else if (data.askSync) {
       this.sync(peer.idGet())
     } else if (data.peerUpdate) {
-      // Sync peer player chosen players from message
       for (const peerPlayer of data.peerUpdate.peerPlayers) {
+        const peerPlayerId = peerPlayer.id
         const player = this.game.players.find((p) => p.idGet() == peerPlayer.player)
         assert(player)
         
-        if (peerPlayer.id == this.connections.registrantId()) {
+        if (peerPlayerId == this.connections.registrantId()) {
           this.viewerSet(player)
         } else {
-          this.connections.peerById(peerPlayer.id)?.playerChange(player)
+          this.connections.peerById(peerPlayerId)?.playerChange(player)
         }
       }
+      this.onPeerChanged(this.connections.peersGet())
     } else if (data.slotUpdates) {
       let updates:UpdateSlot<SlotCard>[]
       let slots:SlotCard[]
@@ -318,24 +330,27 @@ class App {
       )
       
       this.notifierSlot.slotsUpdateChip(this.playfield, this.playfield.withUpdateChip(updates), updates, false)
+    } else if (data.deny) {
+      errorHandler("Connection denied: " + data.deny.message)
     } else {
       console.debug("Unknown message", data)
     }
   }
 
   onPeerConnect(metadata:any, peer:PeerPlayer):void {
+    // tbd: check playfield sequence # and sync if necessary
     if (metadata != 'reconnect')
-      this.sync(peer.idGet()) // tbd: check playfield sequence # and only sync if necessary
+      this.sync(peer.idGet())
   }
 
-  playerGetForPeer(peerId:string):[Player|undefined, string] {
-    for (const player of this.game.players) {
+  playerGetForPeer(peerId:string):[Player|undefined, Player, string] {
+    for (const player of this.game.players.slice(0, this.maxPlayers)) {
       const peer = this.connections.peerByPlayer(player)
-      if (!peer)
-        return [player, ""]
+      if (this.viewer != player && (!peer || peer.isId(peerId)))
+        return [player, this.viewer, ""]
     }
 
-    return [undefined, "Game is full"]
+    return [this.game.spectator(), this.viewer, ""]
   }
   
   serialize() {
@@ -368,11 +383,8 @@ class App {
   }
 
   maxPlayersSet(max:number) {
-    if (max != this.maxPlayers) {
-      this.maxPlayers = max
-      this.uiCreate()
-    }
-    this.onMaxPlayers(this.maxPlayers)
+    this.maxPlayers = max
+    this.uiCreate()
   }
   
   maxPlayersGet() { return this.maxPlayers }
@@ -635,6 +647,17 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
 
 function run(urlCards:string, urlCardBack:string) {
   const elMaxPlayers = dom.demandById("max-players", HTMLInputElement)
+  const tblPlayers = dom.demandById("players", HTMLTableElement)
+
+  function tblPlayersUpdate(peers:PeerPlayer[]) {
+    tblPlayers.innerHTML = ''
+    for (const peer of peers) {
+      const row = tblPlayers.insertRow()
+      row.insertCell().innerText = peer.idGet().slice(7)
+      row.insertCell().innerText = peer.playerGet()?.idGet() ?? 'Unassigned'
+      row.insertCell().innerText = peer.connectingGet() ? 'Connecting...' : (peer.open() ? 'Connected' : 'Disconnected')
+    }
+  }
   
   const app = new App(
     [
@@ -652,7 +675,8 @@ function run(urlCards:string, urlCardBack:string) {
     },
     (maxPlayers:number) => {
       elMaxPlayers.value = maxPlayers.toString()
-    }
+    },
+    tblPlayersUpdate
   )
 
   app.init()
@@ -664,15 +688,7 @@ function run(urlCards:string, urlCardBack:string) {
     () => dom.demandById("error").style.display = 'none'
   )
 
-  const tblPlayers = (dom.demandById("players", HTMLTableElement))
-  app.connections.events.addEventListener("peerupdate", (e:EventPeerUpdate) => {
-    tblPlayers.innerHTML = ''
-    for (const peer of e.peers) {
-      const row = tblPlayers.insertRow()
-      row.insertCell().innerText = peer.idGet()
-      row.insertCell().innerText = peer.open() ? 'Connected' : 'Disconnected'
-    }
-  })
+  app.connections.events.addEventListener("peerupdate", (e:EventPeerUpdate) => tblPlayersUpdate(e.peers))
 
   dom.demandById("id-get").addEventListener("click", () => {
     const id = (dom.demandById("peerjs-id", HTMLInputElement)).value.toLowerCase()
@@ -680,8 +696,11 @@ function run(urlCards:string, urlCardBack:string) {
       throw new Error("Id not given")
     }
     
-    app.connections.register("mpcard-" + id, app.onPeerConnect.bind(app), app.onReceiveData.bind(app),
-                             app.playerGetForPeer.bind(app))
+    app.connections.register("mpcard-" + id,
+                             app.onPeerConnect.bind(app),
+                             app.onReceiveData.bind(app),
+                             app.playerGetForPeer.bind(app),
+                             app.viewerGet.bind(app))
   })
   dom.demandById("connect").addEventListener("click", () => {
     const id = dom.demandById("peerjs-target", HTMLInputElement).value.toLowerCase()
@@ -690,14 +709,16 @@ function run(urlCards:string, urlCardBack:string) {
   })
   dom.demandById("sync").addEventListener("click", () => app.sync())
   dom.demandById("player-next").addEventListener("click", () => {
-    const viewerCurrentIdx = app.gameGet().players.indexOf(app.viewerGet())
-    for (let i = (viewerCurrentIdx + 1) % app.gameGet().players.length;
-         i != viewerCurrentIdx;
-         i = (i + 1) % app.gameGet().players.length) {
-      const player = app.gameGet().players[i]
+    const playersAvailable = app.gameGet().players.slice(0, app.maxPlayersGet()).concat([app.gameGet().spectator()])
+    const startIdx = playersAvailable.indexOf(app.viewerGet())
+    assert(startIdx != -1)
+    for (let i = startIdx+1; i < startIdx+playersAvailable.length; ++i) {
+      const player = playersAvailable[i % playersAvailable.length]
+      assert(player)
       if (!app.connections.peerByPlayer(player)) {
         app.viewerSet(player)
-        break
+        app.connections.onPeerUpdate(player)
+        return
       }
     }
   })
@@ -773,9 +794,9 @@ function run(urlCards:string, urlCardBack:string) {
     const state = window.localStorage.getItem("state")
     if (state) {
       const serialized = JSON.parse(state)
-      dom.demandById("peerjs-id", HTMLInputElement).value = serialized.id
-      dom.demandById("peerjs-target", HTMLInputElement).value = serialized.target
-      dom.demandById("peerjs-host", HTMLInputElement).value = serialized.host
+      dom.demandById("peerjs-id", HTMLInputElement).value = serialized.id ?? ''
+      dom.demandById("peerjs-target", HTMLInputElement).value = serialized.target ?? ''
+      dom.demandById("peerjs-host", HTMLInputElement).value = serialized.host ?? ''
       app.restore(serialized.app)
       dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().idGet()
     }
