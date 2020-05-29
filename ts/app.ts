@@ -38,7 +38,7 @@ class App {
   readonly notifierSlot:NotifierSlot
   readonly urlCards:string
   readonly urlCardBack:string
-  readonly connections:Connections = new Connections()
+  readonly connections:Connections = new Connections(this.onPeerReconnect.bind(this))
   readonly games:Game[]
   private maxPlayers:number = 2
   private root:UISlotRoot
@@ -275,14 +275,16 @@ class App {
   onReceiveData(data:any, peer:PeerPlayer) {
     if (data.chern) {
       this.maxPlayersSet(Math.max(data.chern.maxPlayers, this.maxPlayers))
-      
+
+      // Synchronise the incoming (peer, player) pairs (including local player).
+      // Connect to any peers that this node didn't know about before.
       for (const peer of data.chern.peers) {
         const player = this.game.players.find(p => p.isId(peer.player))
         assert(player, "Unknown player", peer)
         if (peer.id == this.connections.registrantId()) {
           this.viewerSet(player)
         } else if (!this.connections.peerById(peer.id)) {
-          this.connections.connect(peer.id, this.playerGetForPeer.bind(this), undefined, true)
+          this.connections.connect(peer.id, player, () => {}, {})
         } else {
           const peerPlayer = this.connections.peerById(peer.id)
           assert(peerPlayer)
@@ -341,23 +343,41 @@ class App {
   }
 
   onPeerConnect(metadata:any, peer:PeerPlayer):void {
-    // tbd: check playfield sequence # and sync if necessary
-    if (!metadata.isReconnect || metadata.isReply)
-      this.sync(peer.idGet())
+    if (metadata == 'yom') {
+      // tbd: check playfield sequence # and sync if necessary?
+      const [playerForPeer, _] = this.playerGetForPeer(peer)
+      assert(playerForPeer)
+      peer.playerChange(playerForPeer)
+      this.onPeerReconnect(peer)
+    }
   }
 
-  playerGetForPeer(peerId:string):[Player|undefined, Player, string] {
-    const peer = this.connections.peerById(peerId)
-    if (peer) {
-      return [peer.playerGet(), this.viewer, ""]
-    } else {
+  private onPeerReconnect(peer:PeerPlayer) {
+    this.sync(peer.idGet())
+    this.connections.broadcast({
+      chern: {
+        connecting: peer.idGet(),
+        peers: Array.from(this.connections.peersGet().values()).
+          map(p => p.serialize()).
+          concat({id: this.connections.registrantId(), player: this.viewer.idGet()}),
+        maxPlayers: this.maxPlayers
+      }
+    })
+  }
+  
+  playerGetForPeer(peer:PeerPlayer):[Player|undefined, string] {
+    // If the incoming peer already has a player assigned to them, then use that.
+    // Otherwise find the first free one, or use the spectator as a last resort.
+    if (peer.playerGet() == this.game.spectator()) {
       for (const player of this.game.players.slice(0, this.maxPlayers)) {
-        const peer = this.connections.peerByPlayer(player)
-        if (this.viewer != player && (!peer || peer.isId(peerId)))
-          return [player, this.viewer, ""]
+        const peerForPlayer = this.connections.peerByPlayer(player)
+        if (this.viewer != player && (!peerForPlayer || peerForPlayer.is(peer)))
+          return [player, ""]
       }
 
-      return [this.game.spectator(), this.viewer, ""]
+      return [this.game.spectator(), ""]
+    } else {
+      return [peer.playerGet(), ""]
     }
   }
   
@@ -664,8 +684,8 @@ function run(urlCards:string, urlCardBack:string) {
     for (const peer of peers) {
       const row = tblPlayers.insertRow()
       row.insertCell().innerText = peer.idGet().slice(7)
-      row.insertCell().innerText = peer.playerGet()?.idGet() ?? 'Unassigned'
-      row.insertCell().innerText = peer.connectingGet() ? 'Connecting...' : (peer.open() ? 'Connected' : 'Disconnected')
+      row.insertCell().innerText = peer.playerGet().idGet()
+      row.insertCell().innerText = peer.status()
     }
   }
   
@@ -709,13 +729,13 @@ function run(urlCards:string, urlCardBack:string) {
     app.connections.register("mpcard-" + id,
                              app.onPeerConnect.bind(app),
                              app.onReceiveData.bind(app),
-                             app.playerGetForPeer.bind(app),
+                             app.gameGet().spectator(),
                              app.viewerGet.bind(app),
                              app.maxPlayersGet.bind(app))
   })
   dom.demandById("connect").addEventListener("click", () => {
     const id = dom.demandById("peerjs-target", HTMLInputElement).value.toLowerCase()
-    app.connections.connect("mpcard-" + id, app.playerGetForPeer.bind(app))
+    app.connections.connectYom("mpcard-" + id, app.gameGet().spectator())
   })
   dom.demandById("sync").addEventListener("click", () => app.sync())
   dom.demandById("player-next").addEventListener("click", () => {
