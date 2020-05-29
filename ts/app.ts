@@ -680,8 +680,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
   const viewer = app.viewerGet()
   const player = viewer.idCnts[0] ? viewer : app.gameGet().players[0]!
   assertf(() => player)
-  const opponents = app.gameGet().playersActive().filter(p => p != player).slice(0, 3)
-  const opponent = opponents[0]
+  const players = app.gameGet().playersActive()
   
   root.add(
     new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
@@ -689,7 +688,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
                      'flip', ['Deal', () => app.dealInteractive()]).init()
   )
 
-  function slotTrick(player:Player, cnt:UIContainer, slotClass:string) {
+  function slotTrickPlayer(player:Player, cnt:UIContainer, slotClass:string) {
     cnt.add(
       new UISlotSpread(player.idCnts[1], app.selection, null, viewer, playfield, 0,
                        app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
@@ -701,52 +700,74 @@ function makeUiHearts(playfield:Playfield, app:App) {
     cnt.add(
       new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
                        app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                       app.cardHeightGet(), '100%', ['slot', slotClass, 'narrow']).init()
+                       app.cardHeightGet(), '100%', ['slot', slotClass]).init()
     )
-    slotTrick(opponent, cnt, slotClass)
+    slotTrickPlayer(opponent, cnt, slotClass)
   }
-  
-  root.add(
-    new UIContainerFlex('row', false, 'container-flex-centered').with(cnt => {
-      cnt.add(
-        new UIContainerFlex('column').with(cnt => {
-          slotOpponent(opponents[0], cnt, 'slot-overlap-vert')
-        })
-      )
 
-      cnt.add(
-        new UIContainerFlex('column').with(cnt => {
-//          cnt.element.style.minWidth = '70%'
-          
+  if (false/*players.length <= 4*/) {
+    const opponents = app.gameGet().playersActive().filter(p => p != player).slice(0, 3)
+    
+    root.add(
+      new UIContainerFlex('row', false, 'container-flex-centered').with(cnt => {
+        for (const opponent of opponents) {
           cnt.add(
-            new UIContainerFlex().with(cnt => {
-              slotOpponent(opponents[1], cnt, 'slot-overlap')
+            new UIContainerFlex('column').with(cnt => {
+              slotOpponent(opponent, cnt, 'slot-overlap-vert')
             })
           )
-          
-          cnt.add(
-            new UISlotSpread('trick', app.selection, null, viewer, playfield, 0,
-                             app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                             app.cardHeightGet(), '100%').init()
-          )
-          
-          cnt.add(
-            new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
-                             app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
-                             app.cardHeightGet(), '100%').init()
-          )
-          slotTrick(player, cnt, 'slot-overlap')
-        })
-      )
-      
-      cnt.add(
-        new UIContainerFlex('column').with(cnt => {
-//          cnt.element.style.minWidth = '15%'
-          slotOpponent(opponents[2], cnt, 'slot-overlap-vert')
-        })
-      )
-    })
-  )
+        }
+        
+      })
+    )
+
+    root.add(
+      new UIContainerFlex('row', false, 'container-flex-centered').with(cnt => {
+        cnt.add(
+          new UISlotSpread('trick', app.selection, null, viewer, playfield, 0,
+                           app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                           app.cardHeightGet(), '100%').init()
+        )
+      })
+    )
+    
+    root.add(
+      new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
+                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                       app.cardHeightGet(), '100%').init()
+    )
+    slotTrickPlayer(player, root, 'slot-overlap')
+  } else {
+    for (const p of players) {
+      if (p == player) {
+        root.add(
+          new UIContainerDiv().with(cnt => {
+            cnt.element.style.padding = '7px 5px 7px 5px'
+            
+            cnt.add(
+              new UIContainerFlex('row', false, 'container-flex-centered').with(cnt => {
+                cnt.add(
+                  new UISlotSpread('trick', app.selection, null, viewer, playfield, 0,
+                                   app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                                   app.cardHeightGet(), '50%', undefined, undefined, undefined,
+                                   'all-on-space').init()
+                )
+              })
+            )
+
+            cnt.add(
+              new UISlotSpread(player.idCnts[0], app.selection, p, viewer, playfield, 0,
+                               app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                               app.cardHeightGet(), '100%').init()
+            )
+            slotTrickPlayer(p, cnt, 'slot-overlap')
+          })
+        )
+      } else {
+        slotOpponent(p, root, 'slot-overlap')
+      }
+    }
+  }
 }
 
 function run(urlCards:string, urlCardBack:string) {

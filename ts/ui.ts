@@ -191,7 +191,10 @@ abstract class UISlotCard extends UIActionable {
   }
   
   onClick() {
-    this.selection.finalize(this.onAction.bind(this), UICard)
+    if (!this.selection.active() && this.selectionMode == 'all-on-space')
+      this.selection.select(this.children)
+    else
+      this.selection.finalize(this.onAction.bind(this), UICard)
     return true
   }
   
