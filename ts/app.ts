@@ -641,7 +641,8 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
     root.add(
       new UIContainerFlex().with(cnt => {
         for (let i=0; i<3; ++i)
-          cnt.add(makeUiPlayerCards(app, opponent.idCnts[0] + "-show", opponent, viewer, playfield, i, ['aware']))
+          cnt.add(makeUiPlayerCards(app, opponent.idCnts[0] + "-show", opponent, viewer, playfield, i,
+                                    ['aware', 'card5']))
       })
     )
   }
@@ -649,7 +650,7 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
   root.add(
     new UIContainerFlex().with(cnt => {
       for (let i=0; i<3; ++i)
-        cnt.add(makeUiPlayerCards(app, player.idCnts[0] + "-show", player, viewer, playfield, i, ['aware']))
+        cnt.add(makeUiPlayerCards(app, player.idCnts[0] + "-show", player, viewer, playfield, i, ['aware', 'card5']))
     })
   )
   

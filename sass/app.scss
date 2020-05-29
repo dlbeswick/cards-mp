@@ -140,7 +140,7 @@ body {
 	border: solid 1px #228833;
 	box-shadow: inset 1px 1px 3px #228833;
 	// Pad bottom so cards can always be dropped there if the slot starts to get full.
-	padding: 5px 7px 25px 14px;
+	padding: 5px 7px 25px 7px;
 	box-sizing: border-box;
 	min-height: 125px;
 	width: 100%;
@@ -148,7 +148,8 @@ body {
 
 @mixin slot-overlap {
 	// Increase right padding by reverse of largest-size card width - overlap width, so cards wrap appropriately.
-	padding-right: 50px;
+	// TBD: add classes for each card size to tune padding appropriately.
+	padding-right: 32px;
 	
 	.card {
 		width: 25px;
@@ -206,17 +207,18 @@ body {
 
 @mixin slot-overlap-vert {
 	display: flex;
-	flex-direction: row;
+	flex-direction: column;
 	flex-wrap: wrap;
 	box-sizing: content-box;
 	vertical-align: top;
-	padding-bottom: 125px;
-	min-height: 0px;
+	padding-bottom: 85px;
 
 	.card {
+		width: initial;
 		height: 25px;
 		display: block;
 		position: relative; // enable z-ordering
+		padding-right: 2px;
 		img {
 			box-shadow: -0px -2px 1px 0px rgba(0,0,0,0.1);
 		}
@@ -237,6 +239,15 @@ body {
 	}
 	@include media-desktop {
 		@include slot-overlap
+	}
+}
+
+.slot-overlap.aware.card5 {
+	@include media-mobile {
+		max-height: 50px;
+	}
+	@include media-desktop {
+//		max-width: 50px;
 	}
 }
 
