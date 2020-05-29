@@ -30,7 +30,7 @@ abstract class UIElement {
 /*
   Elements that hold other containers or UIActionables.
 */
-abstract class UIContainer extends UIElement {
+export abstract class UIContainer extends UIElement {
   private children:Array<UIActionable|UIContainer> = []
 
   constructor(element:HTMLElement) {
@@ -72,7 +72,7 @@ export class UIContainerDiv extends UIContainer {
 }
 
 export class UIContainerFlex extends UIContainerDiv {
-  constructor(direction:string|undefined='row', grow=false, klass="container-flex") {
+  constructor(direction:string|undefined='row', grow:boolean|string='', klass="container-flex") {
     super()
     this.element.classList.add(klass)
     this.element.style.display = 'flex'
@@ -324,8 +324,7 @@ export class UISlotSpread extends UISlotCard {
     if (width)
       this.element.style.width = width
     this.element.classList.add(...classesSlot)
-    this.containerEl = document.createElement("div")
-    this.element.appendChild(this.containerEl)
+    this.containerEl = this.element
     this.cardWidth = cardWidth
     this.cardHeight = cardHeight
   }

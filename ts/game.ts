@@ -396,6 +396,10 @@ function deck52() {
   return result
 }
 
+function deck51NoDeuce() {
+  return deck52().filter(c => c.suit != Suit.SPADE && c.rank != 1)
+}
+
 function shuffled(deck:Card[]):Card[] {
   const result:Card[] = []
   
@@ -995,6 +999,13 @@ export abstract class Game extends IdentifiedVar {
   }
   
   abstract playfield(players:number):Playfield
+
+  decks():[string, Card[]][] {
+    return [
+      ["Standard 52", deck52()],
+      ["No deuce 51", deck51NoDeuce()]
+    ]
+  }
   
   *deal(players:number, playfield:Playfield):Generator<[Playfield, UpdateSlot<SlotCard>[]], void> {
   }
@@ -1141,3 +1152,32 @@ export class GamePokerChinese extends Game {
   }
 }
 
+export class GameHearts extends Game {
+  constructor(makeUi:(...args:any) => any) {
+    super("hearts", "Hearts", makeUi,
+          array.range(4).map((_,i) => new Player('Player '+(i+1), ['p'+i, `p${i}-trick`])))
+  }
+  
+  deal(players:number, playfield:Playfield) {
+    const numCards = playfield.container("stock").length()
+    return this.dealEach(players, playfield, numCards/players, orderColorAlternateRankW.bind(null, false))
+  }
+  
+  playfield(players:number):Playfield {
+    const deck = shuffled(players == 3 ? deck51NoDeuce() : deck52())
+
+    return new Playfield(
+      this.
+        players.
+        flatMap(p => [
+          new ContainerSlotCard(p.idCnts[0], [new SlotCard(0, p.idCnts[0])]),
+          new ContainerSlotCard(p.idCnts[1], [new SlotCard(0, p.idCnts[1])]),
+        ]).
+        concat([
+          new ContainerSlotCard("trick", [new SlotCard(0, "trick")]),
+          new ContainerSlotCard("stock", [new SlotCard(0, "stock", deck.map(c => new WorldCard(c, false)))])
+        ]),
+      []
+    )
+  }
+}

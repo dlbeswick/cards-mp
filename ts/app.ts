@@ -1,11 +1,11 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  Connections, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  Connections, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Vector } from "./math.js"
-import { Selection, UICard, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
+import { Selection, UICard, UIContainer, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
 window.onerror = errorHandler
 
@@ -675,6 +675,80 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
   )
 }
 
+function makeUiHearts(playfield:Playfield, app:App) {
+  const root = app.rootGet()
+  const viewer = app.viewerGet()
+  const player = viewer.idCnts[0] ? viewer : app.gameGet().players[0]!
+  assertf(() => player)
+  const opponents = app.gameGet().playersActive().filter(p => p != player).slice(0, 3)
+  const opponent = opponents[0]
+  
+  root.add(
+    new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
+                     app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                     'flip', ['Deal', () => app.dealInteractive()]).init()
+  )
+
+  function slotTrick(player:Player, cnt:UIContainer, slotClass:string) {
+    cnt.add(
+      new UISlotSpread(player.idCnts[1], app.selection, null, viewer, playfield, 0,
+                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                       app.cardHeightGet(), '100%', ['slot', slotClass]).init()
+    )
+  }
+  
+  function slotOpponent(opponent:Player, cnt:UIContainer, slotClass:string) {
+    cnt.add(
+      new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
+                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                       app.cardHeightGet(), '100%', ['slot', slotClass, 'narrow']).init()
+    )
+    slotTrick(opponent, cnt, slotClass)
+  }
+  
+  root.add(
+    new UIContainerFlex('row', false, 'container-flex-centered').with(cnt => {
+      cnt.add(
+        new UIContainerFlex('column').with(cnt => {
+          slotOpponent(opponents[0], cnt, 'slot-overlap-vert')
+        })
+      )
+
+      cnt.add(
+        new UIContainerFlex('column').with(cnt => {
+//          cnt.element.style.minWidth = '70%'
+          
+          cnt.add(
+            new UIContainerFlex().with(cnt => {
+              slotOpponent(opponents[1], cnt, 'slot-overlap')
+            })
+          )
+          
+          cnt.add(
+            new UISlotSpread('trick', app.selection, null, viewer, playfield, 0,
+                             app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                             app.cardHeightGet(), '100%').init()
+          )
+          
+          cnt.add(
+            new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
+                             app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                             app.cardHeightGet(), '100%').init()
+          )
+          slotTrick(player, cnt, 'slot-overlap')
+        })
+      )
+      
+      cnt.add(
+        new UIContainerFlex('column').with(cnt => {
+//          cnt.element.style.minWidth = '15%'
+          slotOpponent(opponents[2], cnt, 'slot-overlap-vert')
+        })
+      )
+    })
+  )
+}
+
 function run(urlCards:string, urlCardBack:string) {
   const elMaxPlayers = dom.demandById("max-players", HTMLInputElement)
   const tblPlayers = dom.demandById("players", HTMLTableElement)
@@ -693,6 +767,7 @@ function run(urlCards:string, urlCardBack:string) {
     [
       new GameGinRummy(makeUiGinRummy),
       new GameDummy(makeUiDummy),
+      new GameHearts(makeUiHearts),
       new GamePoker(makeUiPoker),
       new GamePokerChinese(makeUiPokerChinese),
     ],
