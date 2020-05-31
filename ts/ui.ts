@@ -4,6 +4,8 @@ import { Card, Chip, ContainerSlotCard, EventContainerChange, EventMapNotifierSl
 import { Images } from './images.js'
 import { Vector } from './math.js'
 
+const HighDetail = false
+
 function cardFaceUp(isSecretContainer:boolean, wc:WorldCard) {
   let faceUp
   if (wc.faceUpIsConscious)
@@ -339,8 +341,11 @@ export class UISlotSpread extends UISlotCard {
         const uicard = new UICard(wcard, this, true, this.viewer, this.selection, playfield_, this.notifierSlot,
                                   this.images, this.cardWidth, this.cardHeight, this.classesCard)
         uicard.init()
-        uicard.element.style.zIndex = (idx+1).toString() // Keep it +1 just in case transitions ever need to avoid
-                                                         // overlaying the same card (then they can -1).
+        if (HighDetail) {
+          // Keep it +1 just in case transitions ever need to avoid
+          // overlaying the same card (then they can -1).
+          uicard.element.style.zIndex = (idx+1).toString() 
+        }
         this.children[idx] = uicard
         if (child)
           child.element.replaceWith(uicard.element)
@@ -571,11 +576,14 @@ export abstract class UIMovable extends UIElement {
       this.element.style.left = start[0]+'px'
       this.element.style.top = start[1]+'px'
       document.body.appendChild(this.element)
-      const kfEnd = { transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`,
-                      zIndex: zIndexEnd.toString() }
+      const kfEnd = {
+        ...(HighDetail ? {zIndex: zIndexEnd.toString()} : {}),
+            transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`
+      }
       this.element.animate(
         [
-          { transform: 'translate(0px, 0px)', zIndex: this.element.style.zIndex || '0' },
+          { ...(HighDetail ? {zIndex: this.element.style.zIndex || '0'} : {}),
+            transform: 'translate(0px, 0px)' },
           kfEnd
         ],
         {
@@ -584,7 +592,9 @@ export abstract class UIMovable extends UIElement {
         }
       ).addEventListener("finish", (e) => {
         this.element.style.transform = kfEnd.transform
-        this.element.style.zIndex = kfEnd.zIndex
+        if (HighDetail) {
+          this.element.style.zIndex = kfEnd.zIndex
+        }
         onFinish(e)
       })
     } else {
@@ -656,8 +666,13 @@ export class UISlotChip extends UIActionable {
       if (!child || !child.chip.is(chip)) {
         const uichip = new UIChip(this.selection, chip, this, this.cardWidth)
         uichip.init()
-        uichip.element.style.zIndex = (idx+1).toString() // Keep it +1 just in case transitions ever need to avoid
-                                                         // overlaying the same chip (then they can -1).
+        
+        if (HighDetail) {
+          // Keep it +1 just in case transitions ever need to avoid
+          // overlaying the same chip (then they can -1).
+          uichip.element.style.zIndex = (idx+1).toString()
+        }
+                                                         
         this.children[idx] = uichip
         this.element.insertBefore(uichip.element, this.children[idx+1]?.element)
       }
