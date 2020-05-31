@@ -776,6 +776,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
 }
 
 function run(urlCards:string, urlCardBack:string) {
+  const elPeerJsHost = dom.demandById("peerjs-host", HTMLInputElement)
   const elMaxPlayers = dom.demandById("max-players", HTMLInputElement)
   const tblPlayers = dom.demandById("players", HTMLTableElement)
 
@@ -912,7 +913,7 @@ function run(urlCards:string, urlCardBack:string) {
       const state = {
         id: dom.demandById("peerjs-id", HTMLInputElement).value,
         target: dom.demandById("peerjs-target", HTMLInputElement).value,
-        host: dom.demandById("peerjs-host", HTMLInputElement).value,
+        host: elPeerJsHost.value,
         app: app.serialize()
       }
       
@@ -942,8 +943,24 @@ function run(urlCards:string, urlCardBack:string) {
     errorHandler("Problem restoring game state: " + e)
     app.newGame(app.gameGet().idGet())
   }
+
+  if (!elPeerJsHost.value)
+    getDefaultPeerJsHost().then(url => { if (url) elPeerJsHost.value = url })
 }
 
+async function getDefaultPeerJsHost() {
+  const url = "http://"+window.location.hostname+":9000"
+  try {
+    const response = await window.fetch(url)
+    const json = await response.json()
+    if (json?.name == 'PeerJS Server')
+      return window.location.hostname
+  } catch (e) {
+    console.debug("Default PeerJS host test", e)
+    return undefined
+  }
+}
+  
 function test() {
   function moveStock() {
     const app = appGlobal as any
