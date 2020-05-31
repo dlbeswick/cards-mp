@@ -547,13 +547,14 @@ export abstract class UIMovable extends UIElement {
   }
 
   fadeTo(start:string, end:string, msDuration:number, onFinish:(e?:Event) => void = (e) => {}) {
+    
+    const filterEnd = ` opacity(${end})`
+    
     if (this.element.animate) {
-      const filter = this.element.style.filter
-      
       const anim = this.element.animate(
         [
           { filter: ` opacity(${start})` },
-          { filter: ` opacity(${end})` }
+          { filter: filterEnd }
         ],
         {
           duration: msDuration,
@@ -568,6 +569,18 @@ export abstract class UIMovable extends UIElement {
   
   animateTo(start:Vector, end:Vector, zIndexEnd: number, msDuration:number,
             onFinish:(e?:Event) => void = (e) => {}) {
+
+    const kfEnd = {
+      ...(HighDetail ? {zIndex: zIndexEnd.toString()} : {}),
+      transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`
+    }
+    
+    const finish = () => {
+      this.element.style.transform = kfEnd.transform
+      if (HighDetail) {
+        this.element.style.zIndex = kfEnd.zIndex
+      }
+    }
     
     if (this.element.animate) {
       this.events.removeAll()
@@ -576,10 +589,6 @@ export abstract class UIMovable extends UIElement {
       this.element.style.left = start[0]+'px'
       this.element.style.top = start[1]+'px'
       document.body.appendChild(this.element)
-      const kfEnd = {
-        ...(HighDetail ? {zIndex: zIndexEnd.toString()} : {}),
-            transform: `translate(${end[0]-start[0]}px, ${end[1] - start[1]}px)`
-      }
       this.element.animate(
         [
           { ...(HighDetail ? {zIndex: this.element.style.zIndex || '0'} : {}),
@@ -591,14 +600,12 @@ export abstract class UIMovable extends UIElement {
           easing: 'ease-in-out'
         }
       ).addEventListener("finish", (e) => {
-        this.element.style.transform = kfEnd.transform
-        if (HighDetail) {
-          this.element.style.zIndex = kfEnd.zIndex
-        }
+        finish()
         onFinish(e)
       })
     } else {
-      onFinish(undefined)
+      finish()
+      onFinish()
     }
   }
   

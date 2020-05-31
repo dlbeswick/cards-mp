@@ -196,20 +196,22 @@ class App {
           const end = uicard_.coordsAbsolute()
           const [fade0,fade1] = ['100%', '100%']
           if (end[0] == start[0] && end[1] == start[1]) {
-            uicard_.fadeTo('0%', '100%', 250)
-            uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
+            uicard_.fadeTo('0%', '100%', 250, uicard.destroy.bind(uicard))
           } else {
-            uicard.animateTo(start, end, Number(uicard_.element.style.zIndex), msDuration,
-                             () => {
-                               uicard_.element.style.visibility = 'visible'
-                               if (uicard.equalsVisually(uicard_)) {
-                                 uicard.destroy()
-                               } else {
-                                 uicard_.fadeTo('0%', '100%', 250)
-                                 uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
-                               }
-                             })
             uicard_.element.style.visibility = 'hidden'
+            uicard.animateTo(
+              start,
+              end,
+              Number(uicard_.element.style.zIndex),
+              msDuration,
+              () => {
+                uicard_.element.style.visibility = 'visible'
+                if (uicard.equalsVisually(uicard_)) {
+                  uicard.destroy()
+                } else {
+                  uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
+                }
+              })
           }
         }
       } else {
