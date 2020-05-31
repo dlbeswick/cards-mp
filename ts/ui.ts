@@ -1,6 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import { Card, Chip, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventPlayfieldChange, EventSlotChange, NotifierSlot, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot, WorldCard } from './game.js'
+import { Images } from './images.js'
 import { Vector } from './math.js'
 
 function cardFaceUp(isSecretContainer:boolean, wc:WorldCard) {
@@ -152,24 +153,16 @@ abstract class UIActionable extends UIElement {
 */
 abstract class UISlotCard extends UIActionable {
   idSlot:number
-  readonly actionLongPress:string
   protected children:UICard[] = []
-  protected readonly urlCards:string
-  protected readonly urlCardBack:string
-  private readonly selectionMode:string
   private readonly eventsSlot:dom.EventListeners
   
   constructor(element:HTMLElement, idCnt:string, selection:Selection, owner:Player|null, viewer:Player,
-              playfield:Playfield, idSlot:number, notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string,
-              actionLongPress='flip', selectionMode='single') {
+              playfield:Playfield, idSlot:number, notifierSlot:NotifierSlot, readonly images:Images,
+              readonly actionLongPress='flip', private readonly selectionMode='single') {
 
     super(element, idCnt, selection, owner, viewer, playfield, notifierSlot)
     
-    this.actionLongPress = actionLongPress
-    this.selectionMode = selectionMode
     this.idSlot = idSlot
-    this.urlCards = urlCards
-    this.urlCardBack = urlCardBack
 
     this.element.classList.add("slot")
     
@@ -248,22 +241,18 @@ abstract class UISlotCard extends UIActionable {
 */
 export class UISlotSingle extends UISlotCard {
   readonly count:HTMLElement
-  private readonly cardWidth:number
-  private readonly cardHeight:number
   private elCard:HTMLElement;
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield,
-              idSlot:number, notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, cardWidth:number,
-              cardHeight:number, actionLongPress='flip', action?:[string, () => boolean]) {
+              idSlot:number, notifierSlot:NotifierSlot, images:Images, private readonly cardWidth:number,
+              private readonly cardHeight:number, actionLongPress='flip', action?:[string, () => boolean]) {
     super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, idSlot, notifierSlot,
-          urlCards, urlCardBack, actionLongPress)
+          images, actionLongPress)
     this.element.classList.add("slot-single")
     this.element.style.width = cardWidth.toString()+'px'
     this.count = document.createElement("label")
     this.element.appendChild(this.count)
     
-    this.cardWidth = cardWidth
-    this.cardHeight = cardHeight
     this.elCard = this.spaceMake()
     this.element.appendChild(this.elCard)
 
@@ -292,8 +281,8 @@ export class UISlotSingle extends UISlotCard {
       this.children = []
     } else {
       const card = new UICard(
-        slot_.top(), this, false, this.viewer, this.selection, playfield_, this.notifierSlot, this.urlCards,
-        this.urlCardBack, this.cardWidth, this.cardHeight
+        slot_.top(), this, false, this.viewer, this.selection, playfield_, this.notifierSlot, this.images,
+        this.cardWidth, this.cardHeight
       ).init()
       this.elCard.replaceWith(card.element)
       this.elCard = card.element
@@ -315,12 +304,12 @@ export class UISlotSpread extends UISlotCard {
   private cardHeight:number
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield, idSlot:number,
-              notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, cardWidth:number, cardHeight:number,
+              notifierSlot:NotifierSlot, images:Images, cardWidth:number, cardHeight:number,
               width?:string, classesSlot?:string[], classesCard?:string[], actionLongPress='flip',
               selectionMode='single') {
     
-    super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, idSlot, notifierSlot, urlCards,
-          urlCardBack, actionLongPress, selectionMode)
+    super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, idSlot, notifierSlot, images,
+          actionLongPress, selectionMode)
     classesSlot = classesSlot || ['slot', 'slot-overlap']
     classesCard = classesCard || ['card']
     this.classesCard = classesCard
@@ -348,7 +337,7 @@ export class UISlotSpread extends UISlotCard {
       const child = this.children[idx]
       if (!child || !child.wcard.equals(wcard)) {
         const uicard = new UICard(wcard, this, true, this.viewer, this.selection, playfield_, this.notifierSlot,
-                                  this.urlCards, this.urlCardBack, this.cardWidth, this.cardHeight, this.classesCard)
+                                  this.images, this.cardWidth, this.cardHeight, this.classesCard)
         uicard.init()
         uicard.element.style.zIndex = (idx+1).toString() // Keep it +1 just in case transitions ever need to avoid
                                                          // overlaying the same card (then they can -1).
@@ -399,25 +388,15 @@ abstract class UIContainerSlots extends UIActionable {
 */
 export class UIContainerSlotsMulti extends UIContainerSlots {
   private children:UISlotCard[] = []
-  private readonly actionLongPress:string
-  private readonly urlCards:string
-  private readonly urlCardBack:string
-  private readonly cardWidth:number
-  private readonly cardHeight:number
   
   constructor(idCnt:string, selection:Selection, owner:Player|null, viewer:Player, playfield:Playfield,
-              notifierSlot:NotifierSlot, urlCards:string, urlCardBack:string, cardWidth:number, cardHeight:number,
-              height:string, actionLongPress='flip') {
+              notifierSlot:NotifierSlot, private readonly images:Images, private readonly cardWidth:number,
+              private readonly cardHeight:number, height:string, private readonly actionLongPress='flip') {
     super(document.createElement("div"), idCnt, selection, owner, viewer, playfield, notifierSlot)
 
     this.element.classList.add("slot")
     this.element.classList.add("slot-multi")
     this.element.style.minHeight = height
-    this.actionLongPress = actionLongPress
-    this.urlCards = urlCards
-    this.urlCardBack = urlCardBack
-    this.cardWidth = cardWidth
-    this.cardHeight = cardHeight
   }
 
   uiMovablesForSlots(slots:Slot[]):UIMovable[] {
@@ -455,8 +434,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
           playfield_,
           slot_.id,
           this.notifierSlot,
-          this.urlCards,
-          this.urlCardBack,
+          this.images,
           this.cardWidth,
           this.cardHeight,
           `${this.cardWidth}px`,
@@ -781,7 +759,7 @@ export class UICard extends UIMovable {
   private readonly img:HTMLImageElement
   
   constructor(wcard:WorldCard, uislot:UISlotCard, dropTarget:boolean, viewer:Player, selection:Selection,
-              playfield:Playfield, notifierSlot:NotifierSlot, urlCardImages:string, urlCardBack:string,
+              playfield:Playfield, notifierSlot:NotifierSlot, images:Images,
               cardWidth:number, cardHeight:number, classesCard=["card"]) {
     super(document.createElement("div"), selection, dropTarget)
     this.wcard = wcard
@@ -791,12 +769,9 @@ export class UICard extends UIMovable {
     this.element.classList.add(...classesCard)
     this.faceUp = wcard.faceUp && (this.uislot.isViewableBy(viewer) || wcard.faceUpIsConscious)
 
-    this.img = document.createElement("img")
-    if (this.faceUp) {
-      this.img.setAttribute('src', urlCardImages + '#c' + wcard.card.suit + '_' + wcard.card.rank)
-    } else {
-      this.img.setAttribute('src', urlCardBack)
-    }
+    this.img = this.faceUp ?
+      images.cards[wcard.card.suit*4+wcard.card.rank].cloneNode() as HTMLImageElement :
+      images.cardBack.cloneNode() as HTMLImageElement
 
     if (wcard.turned) {
       this.element.classList.add('turned')

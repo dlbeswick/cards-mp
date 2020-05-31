@@ -4,6 +4,7 @@ import {
   Connections, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
+import { Images } from "./images.js"
 import { Vector } from "./math.js"
 import { Selection, UICard, UIContainer, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
@@ -36,8 +37,6 @@ document.addEventListener("deviceready", () => {
 class App {
   readonly selection:Selection = new Selection()
   readonly notifierSlot:NotifierSlot
-  readonly urlCards:string
-  readonly urlCardBack:string
   readonly connections:Connections = new Connections(this.onPeerReconnect.bind(this))
   readonly games:Game[]
   private maxPlayers:number = 2
@@ -51,9 +50,8 @@ class App {
   
   constructor(games:Game[],
               notifierSlot:NotifierSlot,
-              urlCards:string,
-              urlCardBack:string,
               root:UISlotRoot,
+              readonly images:Images,
               readonly onNewGame:(game:Game) => void = () => {},
               readonly onMaxPlayers:(maxPlayers:number) => void = () => {},
               readonly onPeerChanged:(peers:PeerPlayer[]) => void = () => {}
@@ -63,8 +61,6 @@ class App {
     this.games = games
     this.game = games[0]
     this.notifierSlot = notifierSlot
-    this.urlCards = urlCards
-    this.urlCardBack = urlCardBack
     this.viewer = this.game.players[0]
     this.root = root
   }
@@ -434,7 +430,7 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       cnt.add(
         new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
-                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                         app.notifierSlot, app.images, app.cardWidthGet(),
                          app.cardHeightGet(), '100%').init()
       )
     })
@@ -444,14 +440,14 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       
       const uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                           app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                                           app.images, app.cardWidthGet(), app.cardHeightGet(),
                                            '100%')
       uislotWaste.init()
       uislotWaste.element.style.flexGrow = "1"
       cnt.add(uislotWaste)
       
       const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                           app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                                           app.images, app.cardWidthGet(), app.cardHeightGet(),
                                            'flip', ['Deal', () => app.dealInteractive()])
       uislotStock.init()
       cnt.add(uislotStock)
@@ -459,7 +455,7 @@ function makeUiGinRummy(playfield:Playfield, app:App) {
   )
   
   const uislotBottom = new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield,
-                                        0, app.notifierSlot, app.urlCards, app.urlCardBack,
+                                        0, app.notifierSlot, app.images,
                                         app.cardWidthGet(), app.cardHeightGet(),
                                         '100%')
   uislotBottom.init()
@@ -478,7 +474,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       cnt.add(
         new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
-                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                         app.notifierSlot, app.images, app.cardWidthGet(),
                          app.cardHeightGet(), '100%').init()
       )
     })
@@ -488,7 +484,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       cnt.add(
         new UIContainerSlotsMulti(opponent.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
-                                  app.notifierSlot, app.urlCards, app.urlCardBack,
+                                  app.notifierSlot, app.images,
                                   app.cardWidthGet(), app.cardHeightGet(), 'turn').init()
       )
     })
@@ -498,7 +494,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       cnt.add(
         new UISlotSpread('waste', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                         app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                         app.images, app.cardWidthGet(), app.cardHeightGet(),
                          '100%', undefined, undefined, 'flip', 'all-proceeding').init()
       )
     })
@@ -508,7 +504,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       cnt.add(
         new UIContainerSlotsMulti(player.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
-                                  app.notifierSlot, app.urlCards, app.urlCardBack,
+                                  app.notifierSlot, app.images,
                                   app.cardWidthGet(), app.cardHeightGet(), 'turn').init()
       )
     })
@@ -518,7 +514,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       cnt.add(
         new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
-                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                         app.notifierSlot, app.images, app.cardWidthGet(),
                          app.cardHeightGet(), '100%').init()
       )
     })
@@ -528,7 +524,7 @@ function makeUiDummy(playfield:Playfield, app:App) {
     new UIContainerFlex().with(cnt => {
       cnt.add(
         new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                         app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                         app.images, app.cardWidthGet(), app.cardHeightGet(),
                          'flip', ['Deal', () => app.dealInteractive()]).init()
       )
     })
@@ -550,25 +546,33 @@ function makeUiPlayerCards(app:App, cntId:string, owner:Player, viewer:Player, p
                            classes:string[]=[]) {
   
   return new UISlotSpread(cntId, app.selection, owner, viewer, playfield, idSlot,
-                          app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                          app.notifierSlot, app.images, app.cardWidthGet(),
                           app.cardHeightGet(), '100%', ['slot', 'slot-overlap'].concat(classes)).init()
 }
 
 function makeUiPoker(playfield:Playfield, app:App) {
   const root = app.rootGet()
   const viewer = app.viewerGet()
-  const player = viewer.idCnts[0] ? viewer : app.gameGet().players[0]
+  const player = viewer.idCnts[0] ? viewer : app.gameGet().playersActive()[0]
   assert(player)
   
-  const opponent = app.gameGet().players.find(p => p.idCnts[0] && p != player)
-  assert(opponent)
+  const opponents = app.gameGet().playersActive().filter(p => p != player).slice(0, app.maxPlayersGet()-1)
 
-  root.add(
-    new UIContainerFlex('aware').with(cnt => {
-      cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
-      cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
-    })
-  )
+  for (const opponent of opponents) {
+    root.add(
+      new UIContainerFlex('aware').with(cnt => {
+        cnt.add(makeUiPlayerChips(app, opponent, viewer, playfield))
+      })
+    )
+  }
+  
+  for (const opponent of opponents) {
+    root.add(
+      new UIContainerFlex('aware').with(cnt => {
+        cnt.add(makeUiPlayerCards(app, opponent.idCnts[0], opponent, viewer, playfield))
+      })
+    )
+  }
   
   root.add(
     new UIContainerDiv().with(cnt => {
@@ -576,21 +580,21 @@ function makeUiPoker(playfield:Playfield, app:App) {
       cnt.add(
         new UIContainerFlex().with(cnt => {
           let uislotWaste = new UISlotSpread('waste', app.selection, null, viewer, playfield, 0,
-                                             app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                                             app.notifierSlot, app.images, app.cardWidthGet(),
                                              app.cardHeightGet(), '100%', ['slot', 'slot-overlap', 'narrow'])
           uislotWaste.init()
           uislotWaste.element.style.flexGrow = "1"
           cnt.add(uislotWaste)
           
           uislotWaste = new UISlotSpread('community', app.selection, null, viewer, playfield, 0,
-                                         app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                                         app.notifierSlot, app.images, app.cardWidthGet(),
                                          app.cardHeightGet(), '100%', ['slot', 'slot-overlap', 'aware'])
           uislotWaste.init()
           uislotWaste.element.style.flexGrow = "1"
           cnt.add(uislotWaste)
         
           const uislotStock = new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                                               app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet())
+                                               app.images, app.cardWidthGet(), app.cardHeightGet())
           uislotStock.init()
           cnt.add(uislotStock)
         })
@@ -624,7 +628,7 @@ function makeUiPokerChinese(playfield:Playfield, app:App) {
 
   root.add(
     new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                     app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                     app.images, app.cardWidthGet(), app.cardHeightGet(),
                            'flip', ['Deal', () => app.dealInteractive()]).init()
   )
   
@@ -685,14 +689,14 @@ function makeUiHearts(playfield:Playfield, app:App) {
   
   root.add(
     new UISlotSingle('stock', app.selection, null, viewer, playfield, 0, app.notifierSlot,
-                     app.urlCards, app.urlCardBack, app.cardWidthGet(), app.cardHeightGet(),
+                     app.images, app.cardWidthGet(), app.cardHeightGet(),
                      'flip', ['Deal', () => app.dealInteractive()]).init()
   )
 
   function slotTrickPlayer(player:Player, cnt:UIContainer, slotClass:string) {
     cnt.add(
       new UISlotSpread(player.idCnts[1], app.selection, null, viewer, playfield, 0,
-                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                       app.notifierSlot, app.images, app.cardWidthGet(),
                        app.cardHeightGet(), '100%', ['slot', slotClass]).init()
     )
   }
@@ -700,7 +704,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
   function slotOpponent(opponent:Player, cnt:UIContainer, slotClass:string) {
     cnt.add(
       new UISlotSpread(opponent.idCnts[0], app.selection, opponent, viewer, playfield, 0,
-                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                       app.notifierSlot, app.images, app.cardWidthGet(),
                        app.cardHeightGet(), '100%', ['slot', slotClass]).init()
     )
     slotTrickPlayer(opponent, cnt, slotClass)
@@ -726,7 +730,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
       new UIContainerFlex('row', false, 'container-flex-centered').with(cnt => {
         cnt.add(
           new UISlotSpread('trick', app.selection, null, viewer, playfield, 0,
-                           app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                           app.notifierSlot, app.images, app.cardWidthGet(),
                            app.cardHeightGet(), '100%').init()
         )
       })
@@ -734,7 +738,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
     
     root.add(
       new UISlotSpread(player.idCnts[0], app.selection, player, viewer, playfield, 0,
-                       app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                       app.notifierSlot, app.images, app.cardWidthGet(),
                        app.cardHeightGet(), '100%').init()
     )
     slotTrickPlayer(player, root, 'slot-overlap')
@@ -749,7 +753,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
               new UIContainerFlex('row', false, 'container-flex-centered').with(cnt => {
                 cnt.add(
                   new UISlotSpread('trick', app.selection, null, viewer, playfield, 0,
-                                   app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                                   app.notifierSlot, app.images, app.cardWidthGet(),
                                    app.cardHeightGet(), '50%', undefined, undefined, undefined,
                                    'all-on-space').init()
                 )
@@ -758,7 +762,7 @@ function makeUiHearts(playfield:Playfield, app:App) {
 
             cnt.add(
               new UISlotSpread(player.idCnts[0], app.selection, p, viewer, playfield, 0,
-                               app.notifierSlot, app.urlCards, app.urlCardBack, app.cardWidthGet(),
+                               app.notifierSlot, app.images, app.cardWidthGet(),
                                app.cardHeightGet(), '100%').init()
             )
             slotTrickPlayer(p, cnt, 'slot-overlap')
@@ -794,9 +798,8 @@ function run(urlCards:string, urlCardBack:string) {
       new GamePokerChinese(makeUiPokerChinese),
     ],
     new NotifierSlot(),
-    urlCards,
-    urlCardBack,
     new UISlotRoot(),
+    new Images(urlCards, urlCardBack),
     (game:Game) => {
       elMaxPlayers.max = game.playersActive().length.toString()
     },
