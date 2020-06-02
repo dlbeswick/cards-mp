@@ -187,9 +187,9 @@ abstract class UISlotCard extends UIActionable {
   
   onClick() {
     if (!this.selection.active() && this.selectionMode == 'all-on-space')
-      this.selection.select(this.children)
+      this.selection.select(this.playfield, this.children)
     else
-      this.selection.finalize(this.onAction.bind(this), UICard)
+      this.selection.finalize(this.playfield, this.onAction.bind(this), UICard)
     return true
   }
   
@@ -208,10 +208,10 @@ abstract class UISlotCard extends UIActionable {
     if (this.selectionMode == 'all-proceeding') {
       const selectedIdx = this.children.indexOf(uicard)
       if (selectedIdx != -1) {
-        this.selection.select(this.children.slice(selectedIdx))
+        this.selection.select(this.playfield, this.children.slice(selectedIdx))
       }
     } else {
-      this.selection.select([uicard])
+      this.selection.select(this.playfield, [uicard])
     }
   }
   
@@ -409,7 +409,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
   }
   
   onClick() {
-    this.selection.finalize(this.onAction.bind(this), UICard)
+    this.selection.finalize(this.playfield, this.onAction.bind(this), UICard)
     return true
   }
   
@@ -671,7 +671,7 @@ export class UISlotChip extends UIActionable {
       const chip = chips_[idx]
       const child = this.children[idx]
       if (!child || !child.chip.is(chip)) {
-        const uichip = new UIChip(this.selection, chip, this, this.cardWidth)
+        const uichip = new UIChip(this.selection, chip, this, this.cardWidth, this.playfield)
         uichip.init()
         
         if (HighDetail) {
@@ -683,9 +683,9 @@ export class UISlotChip extends UIActionable {
         this.children[idx] = uichip
         this.element.insertBefore(uichip.element, this.children[idx+1]?.element)
       }
+      child._playfield = playfield
       --idx
     }
-    this.playfield = playfield_ // not needed anymore -- remove
     this.count.innerText = '฿' + this.children.map(ui => ui.chip.value).reduce((a,b) => a + b, 0)
   }
   
@@ -706,10 +706,10 @@ export class UISlotChip extends UIActionable {
   
   onClick() {
     if (this.selection.active())
-      this.selection.finalize(this.onAction.bind(this), UIChip)
+      this.selection.finalize(this.playfield, this.onAction.bind(this), UIChip)
     else {
       const valueToSelect = this.top()?.chip.value
-      this.selection.select(this.children.filter(ui => ui.chip.value == valueToSelect))
+      this.selection.select(this.playfield, this.children.filter(ui => ui.chip.value == valueToSelect))
     }
     return true
   }
@@ -733,8 +733,9 @@ export class UIChip extends UIMovable {
   readonly chip:Chip
   readonly uislot:UISlotChip
   readonly img:HTMLImageElement
+  _playfield:Playfield
 
-  constructor(selection:Selection, chip:Chip, uislot:UISlotChip, cardWidth:number) {
+  constructor(selection:Selection, chip:Chip, uislot:UISlotChip, cardWidth:number, Playfield:playfield) {
     super(document.createElement("div"), selection, true)
     this.uislot = uislot
     this.chip = chip
@@ -746,6 +747,7 @@ export class UIChip extends UIMovable {
     this.img.height = cardWidth * 0.75
     this.img.src = "img/chips.svg#" + this.chip.value
     this.element.appendChild(this.img)
+    this._playfield = playfield
   }
 
   init() {
@@ -764,7 +766,7 @@ export class UIChip extends UIMovable {
     if (this.selection.active())
       this.uislot.onClick()
     else
-      this.selection.select([this])
+      this.selection.select(this._playfield, [this])
   }
 }
 
@@ -854,7 +856,7 @@ export class UICard extends UIMovable {
   protected onClick() {
     // This logic is necessary to allow non-drop targets (single slot) to have this action fall through to the slot.
     if (this.dropTarget && this.selection.active() && !this.selection.includes(this)) {
-      this.selection.finalize(this.doMove.bind(this), UICard)
+      this.selection.finalize(this.playfield, this.doMove.bind(this), UICard)
     } else if (this.selection.active() && this.selection.includes(this)) {
       this.selection.deselect()
     } else if (!this.selection.active()) {
@@ -887,12 +889,14 @@ export class UICard extends UIMovable {
 
 export class Selection {
   private selected:readonly UIMovable[] = []
+  private playfield?:Playfield
 
-  select(selects:readonly UIMovable[]) {
+  select(playfield:Playfield, selects:readonly UIMovable[]) {
     const deselects = this.selected.filter(s => !selects.includes(s))
     const newselects = selects.filter(s => !this.selected.includes(s))
     this.deselect(deselects)
     this.selected = selects
+    this.playfield = playfield
     for (const s of newselects) s.onSelect()
   }
 
@@ -902,12 +906,16 @@ export class Selection {
     this.selected = this.selected.filter(s => !selects.includes(s))
   }
 
-  finalize<T extends UIMovable>(func:(selected:readonly T[]) => void, klass:new (...args:any) => T) {
-    if (this.selected.every(s => s instanceof klass)) {
-      if (this.selected.length > 0)
-        func(this.selected as T[])
+  finalize<T extends UIMovable>(playfield:Playfield, func:(selected:readonly T[]) => void,
+                                klass:new (...args:any) => T) {
+    if (playfield == this.playfield) {
+      if (this.selected.every(s => s instanceof klass)) {
+        if (this.selected.length > 0)
+          func(this.selected as T[])
+      }
     }
     this.deselect(this.selected)
+    this.playfield = null
   }
 
   includes(s:UIMovable) {
