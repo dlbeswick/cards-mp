@@ -963,7 +963,7 @@ async function getDefaultPeerJsHost() {
   }
 }
   
-function test() {
+var mptest = () => {
   function moveStock() {
     const app = appGlobal as any
     const playfield = app.playfield

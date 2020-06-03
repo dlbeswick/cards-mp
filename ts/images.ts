@@ -17,4 +17,8 @@ export class Images {
     
     this.cardBack = load(urlCardBack)
   }
+
+  card(suit:number, rank:number):HTMLImageElement {
+    return this.cards[suit*13+rank].cloneNode() as HTMLImageElement
+  }
 }
