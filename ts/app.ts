@@ -327,7 +327,7 @@ class App {
       const errors = playfield_.validateConsistencyCard(updates)
       if (errors.length > 0) {
         console.debug("Inconsistent playfield, syncing", errors)
-        this.sync()
+        this.sync(peer)
       } else {
         this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates, false)
       }
@@ -343,7 +343,7 @@ class App {
       const errors = playfield_.validateConsistencyChip(updates)
       if (errors.length > 0) {
         console.debug("Inconsistent playfield, syncing", errors)
-        this.sync()
+        this.sync(peer)
       } else {
         this.notifierSlot.slotsUpdateChip(this.playfield, playfield_, updates, false)
       }
