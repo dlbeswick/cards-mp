@@ -248,7 +248,7 @@ class App {
     }
   }
 
-  sync(idPeer='') {
+  sync(peer?:PeerPlayer) {
     const data = {
       sync: {
         game: this.game.idGet(),
@@ -256,8 +256,8 @@ class App {
         maxPlayers: this.maxPlayers
       }
     }
-    if (idPeer)
-      this.connections.peerById(idPeer)?.send(data)
+    if (peer)
+      peer.send(data)
     else
       this.connections.broadcast(data)
   }
@@ -301,7 +301,7 @@ class App {
       this.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
       this.onMaxPlayers(this.maxPlayers)
     } else if (data.askSync) {
-      this.sync(peer.idGet())
+      this.sync(peer)
     } else if (data.peerUpdate) {
       for (const peerPlayer of data.peerUpdate.peerPlayers) {
         const peerPlayerId = peerPlayer.id
@@ -323,7 +323,14 @@ class App {
         ([s,s_]) => [s ? SlotCard.fromSerialized(s) : undefined, SlotCard.fromSerialized(s_)]
       )
 
-      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates, false)
+      const playfield_ = this.playfield.withUpdateCard(updates)
+      const errors = playfield_.validateConsistencyCard(updates)
+      if (errors.length > 0) {
+        console.debug("Inconsistent playfield, syncing", errors)
+        this.sync()
+      } else {
+        this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates, false)
+      }
     } else if (data.slotUpdatesChip) {
       let updates:UpdateSlot<SlotChip>[]
       let slots:SlotChip[]
@@ -332,11 +339,18 @@ class App {
         ([s,s_]) => [s ? SlotChip.fromSerialized(s) : undefined, SlotChip.fromSerialized(s_)]
       )
       
-      this.notifierSlot.slotsUpdateChip(this.playfield, this.playfield.withUpdateChip(updates), updates, false)
+      const playfield_ = this.playfield.withUpdateChip(updates)
+      const errors = playfield_.validateConsistencyChip(updates)
+      if (errors.length > 0) {
+        console.debug("Inconsistent playfield, syncing", errors)
+        this.sync()
+      } else {
+        this.notifierSlot.slotsUpdateChip(this.playfield, playfield_, updates, false)
+      }
     } else if (data.deny) {
       errorHandler("Connection denied: " + data.deny.message)
     } else {
-      console.debug("Unknown message", data)
+      console.error("Unknown message", data)
     }
   }
 
@@ -351,7 +365,7 @@ class App {
   }
 
   private onPeerReconnect(peer:PeerPlayer) {
-    this.sync(peer.idGet())
+    this.sync(peer)
     this.connections.broadcast({
       chern: {
         connecting: peer.idGet(),
@@ -995,4 +1009,53 @@ async function getDefaultPeerJsHost() {
   }
 
   moveStock()
+}
+
+(window as any).mptest_sync = () => {
+  const app = appGlobal as any
+  const playfield = app.playfield
+  const cntStock = playfield.container("stock")
+  const stock = playfield.container("stock").first()
+  const cntOthers = playfield.containers.filter((c:ContainerSlotCard) => c != cntStock)
+  const cntOther = cntOthers[Math.floor(Math.random() * cntOthers.length)]
+  const other = cntOther.first()
+  const otherAlt = cntOthers[(cntOthers.indexOf(cntOther)+1) % cntOthers.length].first()
+  const updates:UpdateSlot<SlotCard>[] = [
+    [
+      stock,
+      stock.remove([stock.top()])
+    ],
+    [
+      other,
+      other.add([stock.top().withFaceUp(true)])
+    ]
+  ]
+  
+  app.notifierSlot.slotsUpdateCard(app.playfield, app.playfield.withUpdateCard(updates), updates)
+
+  const updatesAlt:UpdateSlot<SlotCard>[] = [
+    [
+      stock,
+      stock.remove([stock.top()])
+    ],
+    [
+      otherAlt,
+      otherAlt.add([stock.top().withFaceUp(true)])
+    ]
+  ]
+
+  const peer = {
+    idGet: () => 'test',
+    send: (data:any) => (app as any).onReceiveData(data, peer)
+  } as PeerPlayer
+  
+  window.setTimeout(() =>
+    app.onReceiveData(
+      {
+        slotUpdates: updatesAlt.map(([s, s_]) => [s?.serialize(), s_.serialize()])
+      },
+      peer
+    ),
+    1000
+  )
 }

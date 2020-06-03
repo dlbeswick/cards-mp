@@ -158,11 +158,12 @@ export abstract class Slot implements Identified {
   }
 }
 
-// An item within a slot
+// An Item held by a Slot
 export interface ItemSlot extends Identified {
   serialize():any
 }
 
+// A Slot that holds Items
 abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> {
   protected readonly items:readonly T[]
   private readonly construct:(a:number, b:string, c:readonly T[]) => this
@@ -682,6 +683,39 @@ export class Playfield {
       this.containers,
       updates.reduce((cnts, update) => cnts.map(cnt => cnt.update(update)), this.containersChip)
     )
+  }
+
+  validateConsistencyCard(updates:UpdateSlot<SlotCard>[]):string[] {
+    return this.validateConsistency(this.containers, updates)
+  }
+
+  validateConsistencyChip(updates:UpdateSlot<SlotChip>[]):string[] {
+    return this.validateConsistency(this.containersChip, updates)
+  }
+  
+  private validateConsistency<S extends SlotItem<T>, T extends ItemSlot>(
+    containers:readonly ContainerSlot<S, T>[],
+    updates:UpdateSlot<SlotItem<T>>[]):string[] {
+    
+    const result = []
+    for (const [slot, slot_] of updates) {
+      for (const item_ of slot_) {
+        let count = 0
+        
+        for (const cntPf of containers) {
+          for (const slotPf of cntPf) {
+            for (const item of slotPf) {
+              if (item.is(item_))
+                ++count
+            }
+          }
+        }
+        
+        if (count > 1)
+          result.push(`There are ${count} instances of item ${JSON.stringify(item_.serialize())}`)
+      }
+    }
+    return result
   }
 }
 
