@@ -519,12 +519,18 @@ export abstract class UIMovable extends UIElement {
     this.eventsImg.add("mousedown", () => !this.touch ? lpMouseDown(this) : true)
     this.eventsImg.add("mouseout", () => cancel(this))
     this.eventsImg.add("touchstart",
-                       (e:TouchEvent) => { this.touch = e.touches[0]; lpMouseDown(this); return true })
-    this.eventsImg.add("touchmove", (e:TouchEvent) => {
-      if (!this.touch || Math.abs(e.touches[0].screenY - this.touch.screenY) > 5)
-        cancel(this)
-      return true
-    })
+                       (e:TouchEvent) => { this.touch = e.touches[0]; lpMouseDown(this); return true },
+                       {passive: true})
+    this.eventsImg.add(
+      "touchmove",
+      (e:TouchEvent) => {
+        if (!this.touch || Math.abs(e.touches[0].screenY - this.touch.screenY) > 5)
+          cancel(this)
+        return true
+      },
+      {passive: true}
+    )
+    
     this.eventsImg.add("touchcancel", () => cancel(this))
     this.eventsImg.add("touchend", () => this.touch ? lpMouseUp(this) : false)
 
@@ -909,12 +915,17 @@ export class Selection {
 
   finalize<T extends UIMovable>(playfield:Playfield, func:(selected:readonly T[]) => void,
                                 klass:new (...args:any) => T) {
-    if (playfield == this.playfield) {
-      if (this.selected.every(s => s instanceof klass)) {
-        if (this.selected.length > 0)
-          func(this.selected as T[])
+    if (this.selected) {
+      if (playfield == this.playfield) {
+        if (this.selected.every(s => s instanceof klass)) {
+          if (this.selected.length > 0)
+            func(this.selected as T[])
+        }
+      } else {
+        console.debug("Playfield changed since selection was made, selection not finalized")
       }
     }
+    
     this.deselect(this.selected)
     this.playfield = null
   }

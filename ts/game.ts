@@ -638,12 +638,8 @@ class ContainerSlotChip extends ContainerSlot<SlotChip, Chip> {
 }
 
 export class Playfield {
-  readonly containers:ContainerSlotCard[]
-  readonly containersChip:ContainerSlotChip[]
-
-  constructor(containers:ContainerSlotCard[], containersChip:ContainerSlotChip[]) {
-    this.containers = containers
-    this.containersChip = containersChip
+  constructor(readonly containers:readonly ContainerSlotCard[],
+              readonly containersChip:readonly ContainerSlotChip[]) {
   }
 
   static fromSerialized(serialized:any):Playfield {
@@ -719,7 +715,7 @@ export class PeerPlayer extends IdentifiedVar {
           {}
         )
         
-        window.setTimeout(() => this.keepConnected(timeout, failTimeout * 2, ++reconnects), failTimeout)
+        window.setTimeout(() => this.keepConnected(timeout, failTimeout, ++reconnects), failTimeout)
       } else {
         console.warn(`Can't reconnect to peer ${this.idGet()} after ${reconnects} tries`)
         this.conns.onPeerLost(this)

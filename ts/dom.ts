@@ -27,11 +27,13 @@ export class EventListeners {
     this.target = e
   }
   
-  add<T extends Event>(typeEvent:string, handler:(e:T) => boolean):RefEventListener {
+  add<T extends Event>(typeEvent:string, handler:(e:T) => boolean,
+                       options:AddEventListenerOptions={}):RefEventListener {
+
     const ref:RefEventListener = [typeEvent,
                                   EventListeners.preventDefaultWrapper.bind(undefined, handler)]
     this.refs.push(ref)
-    this.target.addEventListener(typeEvent, ref[1])
+    this.target.addEventListener(typeEvent, ref[1], options)
     return ref
   }
 

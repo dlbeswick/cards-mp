@@ -1,7 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  Connections, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
@@ -963,12 +963,14 @@ async function getDefaultPeerJsHost() {
   }
 }
   
-var mptest = () => {
+(window as any).mptest = () => {
   function moveStock() {
     const app = appGlobal as any
     const playfield = app.playfield
+    const cntStock = playfield.container("stock")
     const stock = playfield.container("stock").first()
-    const waste = playfield.container("waste").first()
+    const cntOthers = playfield.containers.filter((c:ContainerSlotCard) => c != cntStock)
+    const waste = cntOthers[Math.floor(Math.random() * cntOthers.length)].first()
     const updates:UpdateSlot<SlotCard>[] = [
       [
         stock,
@@ -976,17 +978,11 @@ var mptest = () => {
       ],
       [
         waste,
-        waste.add([waste.top().withFaceUp(true)])
+        waste.add([stock.top().withFaceUp(true)])
       ]
     ]
     
-    app.playfield = 
-      playfield.slotsUpdate(
-        playfield.withUpdateCard(updates),
-        updates,
-        appGlobal.connections,
-        appGlobal.notifierSlot
-      )
+    app.notifierSlot.slotsUpdateCard(app.playfield, app.playfield.withUpdateCard(updates), updates)
 
     if (app.playfield.container("stock").isEmpty()) {
       appGlobal.newGame(appGlobal.gameGet().idGet())
