@@ -127,6 +127,10 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
     }
   }
 
+  allItems():T[] {
+    return this.slots.reduce((agg, s) => agg.concat(Array.from(s)), [] as T[])
+  }
+  
   [Symbol.iterator]():Iterator<S> {
     return this.slots[Symbol.iterator]()
   }
@@ -725,8 +729,10 @@ export class PeerPlayer extends IdentifiedVar {
   private conn?:any
   private err?:any
   private player:Player
-  private connecting:boolean = true
-  
+  private connecting = true
+  consistency = 0
+  consistencyReported = 0
+
   constructor(id:string, private readonly conns:Connections, player:Player,
               readonly onReconnect:(p:PeerPlayer) => void) {
     super(id)
@@ -734,6 +740,8 @@ export class PeerPlayer extends IdentifiedVar {
     this.player = player
   }
 
+  get consistent() { return this.consistency == this.consistencyReported }
+  
   keepConnected(timeout=10000, failTimeout=2000, reconnects=0) {
     if (this.open()) {
       window.setTimeout(() => this.keepConnected(timeout, 2000, 0), timeout)

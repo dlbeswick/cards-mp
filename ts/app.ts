@@ -47,6 +47,7 @@ class App {
   private game:Game
   private audioCtx?:AudioContext
   private playfield = new Playfield([], [])
+  private debugMessages:any[] = []
   
   constructor(games:Game[],
               notifierSlot:NotifierSlot,
@@ -181,42 +182,50 @@ class App {
   }
   
   private preSlotUpdate(updates:UpdateSlot<Slot>[], localAction:boolean):[UIMovable, Vector][] {
-    const slotsOld = updates.map(u => u[0]!).filter(u => u)
+    const slotsOld = updates.map(u => u[0]).filter(u => u) as Slot[]
     return this.root.uiMovablesForSlots(slotsOld).map(uim => [uim, uim.coordsAbsolute()])
   }
 
-  postSlotUpdate(updates:UpdateSlot<Slot>[], uicards:[UIMovable, Vector][], localAction:boolean) {
+  postSlotUpdate(updates:UpdateSlot<Slot>[], uimovs:[UIMovable, Vector][], localAction:boolean) {
     const msDuration = localAction ? 250 : 1000
     
-    const uicards_ = this.root.uiMovablesForSlots(updates.map(u => u[1]))
-    for (const [uicard, start] of uicards) {
-      const uicard_ = uicards_.find(u_ => u_.is(uicard))
-      if (uicard_) {
-        if (uicard_ != uicard) {
-          const end = uicard_.coordsAbsolute()
-          const [fade0,fade1] = ['100%', '100%']
+    const uimovs_ = this.root.uiMovablesForSlots(updates.map(u => u[1]))
+    
+    for (const [uimov, start] of uimovs) {
+      const uimov_ = uimovs_.find(u_ => u_.is(uimov))
+      
+      if (uimov_) {
+        // UIMoveable has a presence in the new playfield.
+        
+        if (uimov_ != uimov) {
+          // The UIMoveable has changed visually in the new playfield.
+          uimov.removeFromPlay()
+          
+          const end = uimov_.coordsAbsolute()
           if (end[0] == start[0] && end[1] == start[1]) {
-            uicard_.fadeTo('0%', '100%', 250, uicard.destroy.bind(uicard))
+            uimov_.fadeTo('0%', '100%', 250, uimov.destroy.bind(uimov))
           } else {
-            uicard_.element.style.visibility = 'hidden'
-            uicard.animateTo(
+            uimov_.element.style.visibility = 'hidden'
+            uimov.animateTo(
               start,
               end,
-              Number(uicard_.element.style.zIndex),
+              Number(uimov_.element.style.zIndex),
               msDuration,
               () => {
-                uicard_.element.style.visibility = 'visible'
-                if (uicard.equalsVisually(uicard_)) {
-                  uicard.destroy()
+                uimov_.element.style.visibility = 'visible'
+                if (uimov.equalsVisually(uimov_)) {
+                  uimov.destroy()
                 } else {
-                  uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
+                  uimov.fadeTo('100%', '0%', 250, uimov.destroy.bind(uimov))
                 }
               })
           }
         }
       } else {
-        uicard.animateTo(start, [start[0], start[1]], Number(uicard.element.style.zIndex), 0)
-        uicard.fadeTo('100%', '0%', 250, uicard.destroy.bind(uicard))
+        // UIMoveable has no presence in the new playfield.
+        uimov.removeFromPlay()
+        uimov.animateTo(start, [start[0], start[1]], Number(uimov.element.style.zIndex), 0)
+        uimov.fadeTo('100%', '0%', 250, uimov.destroy.bind(uimov))
       }
     }
 
@@ -248,18 +257,18 @@ class App {
     }
   }
 
-  sync(peer?:PeerPlayer) {
+  sync(peerTarget?:PeerPlayer) {
     const data = {
-      sync: {
-        game: this.game.idGet(),
-        playfield: this.playfield.serialize(),
-        maxPlayers: this.maxPlayers
+      game: this.game.idGet(),
+      playfield: this.playfield.serialize(),
+      maxPlayers: this.maxPlayers
+    }
+    for (const peer of this.connections.peersGet()) {
+      if (!peerTarget || peerTarget == peer) {
+        ++peer.consistency
+        peer.send({sync: {...data, consistency: peer.consistency}})
       }
     }
-    if (peer)
-      peer.send(data)
-    else
-      this.connections.broadcast(data)
   }
 
   revealAll() {
@@ -271,6 +280,22 @@ class App {
   }
 
   onReceiveData(data:any, peer:PeerPlayer) {
+    if ((window as any).mptest_latency) {
+      this.debugMessages.push(data)
+      window.setTimeout(
+        () => {
+          const d = this.debugMessages[0]
+          this.debugMessages = this.debugMessages.slice(1)
+          this._onReceiveData(d, peer)
+        },
+        Math.floor(Math.random() * 1000)
+      )
+    } else {
+      this._onReceiveData(data, peer)
+    }
+  }
+  
+  private _onReceiveData(data:any, peer:PeerPlayer) {
     if (data.chern) {
       this.maxPlayersSet(Math.max(data.chern.maxPlayers, this.maxPlayers))
 
@@ -300,8 +325,12 @@ class App {
       this.maxPlayers = data.sync.maxPlayers
       this.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
       this.onMaxPlayers(this.maxPlayers)
+      peer.send({gotSync: { consistency: data.sync.consistency }})
     } else if (data.askSync) {
       this.sync(peer)
+    } else if (data.gotSync) {
+      peer.consistencyReported = data.gotSync.consistency
+      console.debug("Peer got sync", peer.consistency, peer.consistencyReported)
     } else if (data.peerUpdate) {
       for (const peerPlayer of data.peerUpdate.peerPlayers) {
         const peerPlayerId = peerPlayer.id
@@ -316,34 +345,37 @@ class App {
       }
       this.onPeerChanged(this.connections.peersGet())
     } else if (data.slotUpdates) {
-      let updates:UpdateSlot<SlotCard>[]
-      let slots:SlotCard[]
+      if (!peer.consistent) {
+        console.warn("Peer inconsistent", peer.idGet())
+        return
+      }
       
-      updates = (data.slotUpdates as UpdateSlot<SlotCard>[]).map(
+      const updates = (data.slotUpdates as UpdateSlot<SlotCard>[]).map(
         ([s,s_]) => [s ? SlotCard.fromSerialized(s) : undefined, SlotCard.fromSerialized(s_)]
-      )
+      ) as UpdateSlot<SlotCard>[]
 
       const playfield_ = this.playfield.withUpdateCard(updates)
+      assert(playfield_.containers.reduce((agg, i) => agg + i.allItems().length, 0) == 52)
       const errors = playfield_.validateConsistencyCard(updates)
       if (errors.length > 0) {
-        console.debug("Inconsistent playfield, syncing", errors)
-        this.sync(peer)
+        this.onPlayfieldInconsistent(peer, errors)
       } else {
-        this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates, false)
+        this.notifierSlot.slotsUpdateCard(this.playfield, playfield_, updates, false)
       }
     } else if (data.slotUpdatesChip) {
-      let updates:UpdateSlot<SlotChip>[]
-      let slots:SlotChip[]
+      if (!peer.consistent) {
+        console.warn("Peer inconsistent", peer.idGet())
+        return
+      }
       
-      updates = (data.slotUpdatesChip as UpdateSlot<SlotChip>[]).map(
+      const updates = (data.slotUpdatesChip as UpdateSlot<SlotChip>[]).map(
         ([s,s_]) => [s ? SlotChip.fromSerialized(s) : undefined, SlotChip.fromSerialized(s_)]
-      )
+      ) as UpdateSlot<SlotChip>[]
       
       const playfield_ = this.playfield.withUpdateChip(updates)
       const errors = playfield_.validateConsistencyChip(updates)
       if (errors.length > 0) {
-        console.debug("Inconsistent playfield, syncing", errors)
-        this.sync(peer)
+        this.onPlayfieldInconsistent(peer, errors)
       } else {
         this.notifierSlot.slotsUpdateChip(this.playfield, playfield_, updates, false)
       }
@@ -354,6 +386,18 @@ class App {
     }
   }
 
+  private onPlayfieldInconsistent(peer:PeerPlayer, errors:string[]) {
+    const registrantId = this.connections.registrantId()
+    assert(registrantId)
+    if (peer.idGet() < registrantId) {
+      console.debug("Inconsistent playfield with authoritive id, syncing", errors)
+      this.sync(peer)
+    } else {
+      peer.send({askSync: true})
+      console.debug("Inconsistent playfield with non-authoritive id, surrendering", errors)
+    }
+  }
+  
   onPeerConnect(metadata:any, peer:PeerPlayer):void {
     if (metadata == 'yom') {
       // tbd: check playfield sequence # and sync if necessary?
@@ -828,7 +872,9 @@ function run(urlCards:string, urlCardBack:string) {
 
   app.init()
   
-  appGlobal = app
+  appGlobal = app;
+  
+  (window as any).mpcardAppGlobal = app
 
   dom.demandById("error").addEventListener(
     "click",
@@ -1059,3 +1105,36 @@ async function getDefaultPeerJsHost() {
     1000
   )
 }
+
+(window as any).mptest_rnd = () => {
+  (window as any).mptest_latency = true
+  
+  function work() {
+    const app = appGlobal
+    const playfield = (app as any).playfield as Playfield
+    const cnts = playfield.containers.filter((c:ContainerSlotCard) => !c.isEmpty() && !c.first().isEmpty())
+    const cnt = cnts[Math.floor(Math.random() * cnts.length)]
+    const cntOthers = playfield.containers.filter((c:ContainerSlotCard) => c != cnt)
+    const other = cntOthers[Math.floor(Math.random() * cntOthers.length)]
+    const updates:UpdateSlot<SlotCard>[] = [
+      [
+        cnt.first(),
+        cnt.first().remove([cnt.first().top()])
+      ],
+      [
+        other.first(),
+        other.first().add([cnt.first().top().withFaceUp(true)])
+      ]
+    ]
+
+    const playfield_ = playfield.withUpdateCard(updates)
+    assert(playfield.containers.reduce((agg, i) => agg + i.allItems().length, 0) == 52)
+    assert(playfield_.containers.reduce((agg, i) => agg + i.allItems().length, 0) == 52)
+    app.notifierSlot.slotsUpdateCard(playfield, playfield_, updates)
+    window.setTimeout(work, Math.floor(Math.random() * 2000))
+  }
+
+  work()
+}
+
+(window as any).mptest_latency = false

@@ -191,9 +191,9 @@ abstract class UISlotCard extends UIActionable {
   
   onClick() {
     if (!this.selection.active() && this.selectionMode == 'all-on-space')
-      this.selection.select(this._playfield, this.children)
+      this.selection.select(this.children)
     else
-      this.selection.finalize(this._playfield, this.onAction.bind(this), UICard)
+      this.selection.finalize(this.onAction.bind(this), UICard)
     return true
   }
   
@@ -212,10 +212,10 @@ abstract class UISlotCard extends UIActionable {
     if (this.selectionMode == 'all-proceeding') {
       const selectedIdx = this.children.indexOf(uicard)
       if (selectedIdx != -1) {
-        this.selection.select(this._playfield, this.children.slice(selectedIdx))
+        this.selection.select(this.children.slice(selectedIdx))
       }
     } else {
-      this.selection.select(this._playfield, [uicard])
+      this.selection.select([uicard])
     }
   }
   
@@ -411,7 +411,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
   }
   
   onClick() {
-    this.selection.finalize(this._playfield, this.onAction.bind(this), UICard)
+    this.selection.finalize(this.onAction.bind(this), UICard)
     return true
   }
   
@@ -465,6 +465,7 @@ export abstract class UIMovable extends UIElement {
   private eventsImg?:dom.EventListeners
   private timerPress?:number
   private touch?:Touch
+  private _isInPlay:boolean = true
   
   constructor(el:HTMLElement, selection:Selection, dropTarget:boolean) {
     super(el)
@@ -474,6 +475,15 @@ export abstract class UIMovable extends UIElement {
   
   abstract equalsVisually(rhs:this):boolean
   abstract is(rhs:this):boolean
+
+  isInPlay():boolean { return this._isInPlay }
+  removeFromPlay():void {
+    this.eventsImg?.removeAll()
+    if (this.selection.includes(this))
+      this.selection.deselect([this])
+    this._isInPlay = false
+  }
+  
   protected abstract playfield():Playfield
   
   protected init(elementClickable:EventTarget):void {
@@ -721,10 +731,10 @@ export class UISlotChip extends UIActionable {
   
   onClick() {
     if (this.selection.active())
-      this.selection.finalize(this._playfield, this.onAction.bind(this), UIChip)
+      this.selection.finalize(this.onAction.bind(this), UIChip)
     else {
       const valueToSelect = this.top()?.chip.value
-      this.selection.select(this._playfield, this.children.filter(ui => ui.chip.value == valueToSelect))
+      this.selection.select(this.children.filter(ui => ui.chip.value == valueToSelect))
     }
     return true
   }
@@ -783,7 +793,7 @@ export class UIChip extends UIMovable {
     if (this.selection.active())
       this.uislot.onClick()
     else
-      this.selection.select(this.playfield(), [this])
+      this.selection.select([this])
   }
 }
 
@@ -829,7 +839,7 @@ export class UICard extends UIMovable {
     super.init(this.img)
     return this
   }
-
+  
   equalsVisually(rhs:this) {
     return this.wcard.card.is(rhs.wcard.card) && this.faceUp == rhs.faceUp
   }
@@ -860,7 +870,7 @@ export class UICard extends UIMovable {
   protected onClick() {
     // This logic is necessary to allow non-drop targets (single slot) to have this action fall through to the slot.
     if (this.dropTarget && this.selection.active() && !this.selection.includes(this)) {
-      this.selection.finalize(this.playfield(), this.doMove.bind(this), UICard)
+      this.selection.finalize(this.doMove.bind(this), UICard)
     } else if (this.selection.active() && this.selection.includes(this)) {
       this.selection.deselect()
     } else if (!this.selection.active()) {
@@ -896,14 +906,12 @@ export class UICard extends UIMovable {
 
 export class Selection {
   private selected:readonly UIMovable[] = []
-  private playfield:Playfield|null = null
 
-  select(playfield:Playfield, selects:readonly UIMovable[]) {
+  select(selects:readonly UIMovable[]) {
     const deselects = this.selected.filter(s => !selects.includes(s))
     const newselects = selects.filter(s => !this.selected.includes(s))
     this.deselect(deselects)
     this.selected = selects
-    this.playfield = playfield
     for (const s of newselects) s.onSelect()
   }
 
@@ -913,21 +921,19 @@ export class Selection {
     this.selected = this.selected.filter(s => !selects.includes(s))
   }
 
-  finalize<T extends UIMovable>(playfield:Playfield, func:(selected:readonly T[]) => void,
-                                klass:new (...args:any) => T) {
-    if (this.selected) {
-      if (playfield == this.playfield) {
+  finalize<T extends UIMovable>(func:(selected:readonly T[]) => void, klass:new (...args:any) => T) {
+    if (this.selected.length > 0) {
+      if (this.isConsistent()) {
         if (this.selected.every(s => s instanceof klass)) {
           if (this.selected.length > 0)
             func(this.selected as T[])
         }
       } else {
-        console.debug("Playfield changed since selection was made, selection not finalized")
+        console.debug("Some elements of selection inconsistent with current playfield, selection not finalized")
       }
+      
+      this.deselect(this.selected)
     }
-    
-    this.deselect(this.selected)
-    this.playfield = null
   }
 
   includes(s:UIMovable) {
@@ -936,5 +942,9 @@ export class Selection {
 
   active() {
     return this.selected.length > 0
+  }
+
+  private isConsistent() {
+    return this.selected.every(m => m.isInPlay())
   }
 }
