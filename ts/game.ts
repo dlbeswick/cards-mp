@@ -21,19 +21,23 @@ interface Identified {
   serialize():any
 }
 
+function fsort_id<IdType extends string>(a:IdentifiedByVal<IdType>, b:IdentifiedByVal<IdType>):number {
+  return a.id.localeCompare(b.id)
+}
+
 abstract class IdentifiedByVal<IdType> implements Identified {
-  abstract idGet():IdType
+  abstract get id():IdType
   
   is(rhs:this):boolean {
-    return this.isId(rhs.idGet())
+    return this.isId(rhs.id)
   }
   
   isId(id:IdType):boolean {
-    return this.idGet() == id
+    return this.id == id
   }
 
   serialize(): any {
-    return { id: this.idGet() }
+    return { id: this.id }
   }
 }
 
@@ -45,7 +49,7 @@ abstract class IdentifiedVar<IdType=string> extends IdentifiedByVal<IdType> {
     this._id = id
   }
 
-  idGet():IdType {
+  get id():IdType {
     return this._id
   }
 }
@@ -74,17 +78,17 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
   }
   
   add(slots:S[]):this {
-    return this.construct(this.idGet(), this.slots.concat(slots), this.secret)
+    return this.construct(this.id, this.slots.concat(slots), this.secret)
   }
 
   slot(id:number):S {
-    const slot = this.slots.find(s => s.isId(id, this.idGet()))
+    const slot = this.slots.find(s => s.isId(id, this.id))
     assert(slot, "No slot of id", id)
     return slot
   }
   
   clear():this {
-    return this.construct(this.idGet(), [], this.secret)
+    return this.construct(this.id, [], this.secret)
   }
   
   isEmpty():boolean {
@@ -115,12 +119,12 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
         const idx = this.slots.findIndex(s => s.is(slot))
         assert(idx != -1, "Slot not found in update", slot.id, slot.idCnt)
         return this.construct(
-          this.idGet(),
+          this.id,
           this.slots.slice(0, idx).concat([slot_] as S[]).concat(this.slots.slice(idx+1)),
           this.secret
         )
       } else {
-        return this.construct(this.idGet(), this.slots.concat([slot_] as S[]), this.secret)
+        return this.construct(this.id, this.slots.concat([slot_] as S[]), this.secret)
       }
     } else {
       return this
@@ -141,6 +145,10 @@ export abstract class Slot implements Identified {
   readonly id:number
   readonly idCnt:string
 
+  static sort(lhs:Slot, rhs:Slot) {
+    return lhs.idCnt.localeCompare(rhs.idCnt) || lhs.id - rhs.id
+  }
+  
   constructor(id:number, idCnt:string) {
     this.id = id
     this.idCnt = idCnt
@@ -347,7 +355,7 @@ export class WorldCard extends IdentifiedVar<string> {
   readonly faceUpIsConscious:boolean
   readonly turned:boolean
 
-  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false, id=card.idGet()) {
+  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false, id=card.id) {
     super(id)
     this.card = card
     this.faceUp = faceUp
@@ -510,7 +518,8 @@ function newEventTarget() {
   return document.createElement('div') as EventTargetNotifierSlot
 }
 
-type FuncSlotUpdatePre<S extends Slot> = (updates:UpdateSlot<S>[], localAction:boolean) => any
+type FuncSlotUpdatePre<S extends Slot> = (moves:[WorldCard,S][], updates:UpdateSlot<S>[],
+                                          localAction:boolean) => any
 type FuncSlotUpdatePost = (updates:UpdateSlot<Slot>[], result:any, localAction:boolean) => void
 type ResultPreSlotUpdate = any
 
@@ -552,21 +561,22 @@ export class NotifierSlot {
     this.postSlotUpdates.push(func)
   }
 
-  slotsUpdateCard(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotCard>[],
-                  localAction=true):Playfield {
-    return this.slotsUpdate(playfield, playfield_, updates, localAction,
-                            this.slotUpdates.map(f => f(updates, localAction)))
+  slotsUpdateCard(playfield:Playfield, playfield_:Playfield, moves:[WorldCard,SlotCard][],
+                  updates:UpdateSlot<SlotCard>[], localAction=true):Playfield {
+    
+    return this.slotsUpdate(playfield, playfield_, moves, updates, localAction,
+                            this.slotUpdates.map(f => f(moves, updates, localAction)))
   }
   
   slotsUpdateChip(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotChip>[],
                   localAction=true):Playfield {
-    return this.slotsUpdate(playfield, playfield_, updates, localAction,
-                            this.slotUpdatesChip.map(f => f(updates, localAction)))
+    return this.slotsUpdate(playfield, playfield_, [], updates, localAction,
+                            this.slotUpdatesChip.map(f => f([], updates, localAction)))
   }
   
   private slotsUpdate<S extends Slot>(
-    playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<S>[], localAction:boolean,
-    preSlotChangeInfo:ResultPreSlotUpdate
+    playfield:Playfield, playfield_:Playfield, moves:[WorldCard,SlotCard][], updates:UpdateSlot<S>[],
+    localAction:boolean, preSlotChangeInfo:ResultPreSlotUpdate
   ):Playfield {
     const cntChanged:Map<string, UpdateSlot<S>[]> = new Map()
     for (const update of updates) {
@@ -642,6 +652,30 @@ class ContainerSlotChip extends ContainerSlot<SlotChip, Chip> {
   }
 }
 
+export class CardsMove {
+  constructor(
+    readonly cards:readonly [WorldCard,SlotCard][],
+    readonly slotDest:SlotCard,
+    readonly before?:WorldCard
+  ) {}
+
+  static fromSerialized(playfield:Playfield, s:any) {
+    return new CardsMove(
+      s.cards.map((e:any) => [WorldCard.fromSerialized(e[0]), playfield.container(e[1]).slot(e[2])]),
+      playfield.container(s.slotDest[0]).slot(s.slotDest[1]),
+      WorldCard.fromSerialized(s.before)
+    )
+  }
+  
+  serialize() {
+    return {
+      cards: this.cards.map(([card, slot]) => [card.serialize(), [slot.id, slot.idCnt]]),
+      slotDest: [this.slotDest.id, this.slotDest.idCnt],
+      before: this.before
+    }
+  }
+}
+
 export class Playfield {
   constructor(readonly containers:readonly ContainerSlotCard[],
               readonly containersChip:readonly ContainerSlotChip[]) {
@@ -657,6 +691,21 @@ export class Playfield {
   serialize():any {
     return { containers: this.containers.map(s => s.serialize()),
              containersChip: this.containersChip.map(s => s.serialize()) }
+  }
+
+  withCardsMove(move:CardsMove) {
+    const updates = [] as UpdateSlot<SlotCard>[]
+    for (const [slot, moves] of array.group_by(move.cards, ([card, slot]) => slot, Slot.sort)) {
+      const cards = moves.map(([card, slot]) => card)
+      assert(cards.every(c => slot.hasItem(c)), `Slot ${slot.id} doesn't have card`)
+      if (slot.is(move.slotDest)) {
+        updates.push([slot, slot.remove(cards).add(cards, move.before)])
+      } else {
+        updates.push([slot, slot.remove(cards)])
+        updates.push([move.slotDest, move.slotDest.add(cards,move.before)])
+      }
+    }
+    return this.withUpdateCard(updates)
   }
   
   container(id:string):ContainerSlotCard {
@@ -747,11 +796,11 @@ export class PeerPlayer extends IdentifiedVar {
       window.setTimeout(() => this.keepConnected(timeout, 2000, 0), timeout)
     } else {
       if (reconnects < 30) {
-        console.log("Lost peer connection, trying to reconnect", this.idGet(), reconnects, failTimeout)
+        console.log("Lost peer connection, trying to reconnect", this.id, reconnects, failTimeout)
 
         this.err = undefined
         this.conns.connect(
-          this.idGet(),
+          this.id,
           this.player,
           (peerPlayer, conn) => { this.onOpened(conn); this.onReconnect(peerPlayer) },
           {}
@@ -759,7 +808,7 @@ export class PeerPlayer extends IdentifiedVar {
         
         window.setTimeout(() => this.keepConnected(timeout, failTimeout, ++reconnects), failTimeout)
       } else {
-        console.warn(`Can't reconnect to peer ${this.idGet()} after ${reconnects} tries`)
+        console.warn(`Can't reconnect to peer ${this.id} after ${reconnects} tries`)
         this.conns.onPeerLost(this)
       }
     }
@@ -798,12 +847,12 @@ export class PeerPlayer extends IdentifiedVar {
   
   send(data:any) {
     assert(this.open())
-    console.debug('Send to ' + this.idGet(), data)
+    console.debug('Send to ' + this.id, data)
     this.conn.send(data)
   }
 
   serialize():any {
-    return { ...super.serialize(), player: this.player.idGet() }
+    return { ...super.serialize(), player: this.player.id }
   }
 }
 
@@ -1004,12 +1053,12 @@ export class Connections {
   }
 
   onPeerError(peer:PeerPlayer, error:any) {
-    console.log('Peer connection error', peer.idGet(), error)
+    console.log('Peer connection error', peer.id, error)
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 
   onPeerLost(peer:PeerPlayer) {
-    this.peers.delete(peer.idGet())
+    this.peers.delete(peer.id)
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 
@@ -1017,7 +1066,7 @@ export class Connections {
     const peers = this.peersGet().map((p) => p.serialize())
     this.broadcast({
       peerUpdate: {
-        peerPlayers: peers.concat([{id: this.registrantId(), player: registrantPlayer.idGet()}])
+        peerPlayers: peers.concat([{id: this.registrantId(), player: registrantPlayer.id}])
       }
     })
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))

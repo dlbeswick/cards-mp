@@ -1,7 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  CardMove, Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
@@ -86,7 +86,7 @@ class App {
   }
   
   newGame(idGame:string, playfield?:Playfield, viewerId?:string) {
-    const game = this.games.find(g => g.idGet() == idGame)
+    const game = this.games.find(g => g.id == idGame)
     if (!game) {
       throw new Error("No such game " + idGame)
     }
@@ -95,8 +95,8 @@ class App {
     this.maxPlayers = Math.min(this.maxPlayers, this.game.playersActive().length)
     this.playfield = playfield ?? this.game.playfield(this.maxPlayers)
     this.viewerSet(
-      this.game.players.find(p => p.idGet() == viewerId) ??
-        this.game.players.find(p => p.idGet() == this.viewer?.idGet()) ??
+      this.game.players.find(p => p.id == viewerId) ??
+        this.game.players.find(p => p.id == this.viewer?.id) ??
         this.game.players[0]
     ) || this.uiCreate()
 
@@ -132,27 +132,27 @@ class App {
     this.root.destroy()
     this.root = new UISlotRoot()
     this.game.makeUi(this.playfield, this)
-    dom.demandById("player").innerText = this.viewer.idGet()
+    dom.demandById("player").innerText = this.viewer.id
 
     for (const cnt of this.playfield.containers) {
       for (const slot of cnt) {
-        this.notifierSlot.slot(cnt.idGet(), slot.id).dispatchEvent(
-          new EventSlotChange(this.playfield, this.playfield, cnt.idGet(), slot.id)
+        this.notifierSlot.slot(cnt.id, slot.id).dispatchEvent(
+          new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.id)
         )
       }
-      this.notifierSlot.container(cnt.idGet()).dispatchEvent(
-        new EventContainerChange(this.playfield, this.playfield, cnt.idGet(), Array.from(cnt).map(s => [s,s]))
+      this.notifierSlot.container(cnt.id).dispatchEvent(
+        new EventContainerChange(this.playfield, this.playfield, cnt.id, Array.from(cnt).map(s => [s,s]))
       )
     }
 
     for (const cnt of this.playfield.containersChip) {
       for (const slot of cnt) {
-        this.notifierSlot.slot(cnt.idGet(), slot.id).dispatchEvent(
-          new EventSlotChange(this.playfield, this.playfield, cnt.idGet(), slot.id)
+        this.notifierSlot.slot(cnt.id, slot.id).dispatchEvent(
+          new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.id)
         )
       }
-      this.notifierSlot.container(cnt.idGet()).dispatchEvent(
-        new EventContainerChange(this.playfield, this.playfield, cnt.idGet(), Array.from(cnt).map(s => [s,s]))
+      this.notifierSlot.container(cnt.id).dispatchEvent(
+        new EventContainerChange(this.playfield, this.playfield, cnt.id, Array.from(cnt).map(s => [s,s]))
       )
     }
   }
@@ -165,15 +165,17 @@ class App {
     return this.game
   }
 
-  preSlotUpdateCard(updates:UpdateSlot<SlotCard>[], localAction:boolean):[UIMovable, Vector][] {
+  preSlotUpdateCard(moves:[WorldCard,SlotCard][], updates:UpdateSlot<SlotCard>[],
+                    localAction:boolean):[UIMovable, Vector][] {
     if (localAction) {
-      this.connections.broadcast({slotUpdates: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
+      this.connections.broadcast({movesCard: { moves: moves.map(([c, s]) => [c.serialize(), [s_.id, s_.idCnt]]) }})
     }
 
-    return this.preSlotUpdate(updates, localAction)
+    return this.preSlotUpdate(moves, updates, localAction)
   }
 
-  preSlotUpdateChip(updates:UpdateSlot<SlotChip>[], localAction:boolean):[UIMovable, Vector][] {
+  preSlotUpdateChip(moves:[WorldCard,SlotCard][], updates:UpdateSlot<SlotChip>[],
+                    localAction:boolean):[UIMovable, Vector][] {
     if (localAction) {
       this.connections.broadcast({slotUpdatesChip: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
     }
@@ -259,7 +261,7 @@ class App {
 
   sync(peerTarget?:PeerPlayer) {
     const data = {
-      game: this.game.idGet(),
+      game: this.game.id,
       playfield: this.playfield.serialize(),
       maxPlayers: this.maxPlayers
     }
@@ -334,7 +336,7 @@ class App {
     } else if (data.peerUpdate) {
       for (const peerPlayer of data.peerUpdate.peerPlayers) {
         const peerPlayerId = peerPlayer.id
-        const player = this.game.players.find((p) => p.idGet() == peerPlayer.player)
+        const player = this.game.players.find((p) => p.id == peerPlayer.player)
         assert(player)
         
         if (peerPlayerId == this.connections.registrantId()) {
@@ -344,27 +346,24 @@ class App {
         }
       }
       this.onPeerChanged(this.connections.peersGet())
-    } else if (data.slotUpdates) {
+    } else if (data.movesCard) {
       if (!peer.consistent) {
-        console.warn("Peer inconsistent", peer.idGet())
+        console.warn("Peer inconsistent", peer.id)
         return
       }
       
-      const updates = (data.slotUpdates as UpdateSlot<SlotCard>[]).map(
-        ([s,s_]) => [s ? SlotCard.fromSerialized(s) : undefined, SlotCard.fromSerialized(s_)]
-      ) as UpdateSlot<SlotCard>[]
+      const moves = data.movesCard.moves.map(s => CardMove.fromSerialized(s))
 
-      const playfield_ = this.playfield.withUpdateCard(updates)
-      assert(playfield_.containers.reduce((agg, i) => agg + i.allItems().length, 0) == 52)
+      const playfield_ = this.playfield.withCardsMove(moves)
       const errors = playfield_.validateConsistencyCard(updates)
       if (errors.length > 0) {
         this.onPlayfieldInconsistent(peer, errors)
       } else {
-        this.notifierSlot.slotsUpdateCard(this.playfield, playfield_, updates, false)
+        this.notifierSlot.slotsUpdateCard(this.playfield, playfield_, moves, updates, false)
       }
     } else if (data.slotUpdatesChip) {
       if (!peer.consistent) {
-        console.warn("Peer inconsistent", peer.idGet())
+        console.warn("Peer inconsistent", peer.id)
         return
       }
       
@@ -389,7 +388,7 @@ class App {
   private onPlayfieldInconsistent(peer:PeerPlayer, errors:string[]) {
     const registrantId = this.connections.registrantId()
     assert(registrantId)
-    if (peer.idGet() < registrantId) {
+    if (peer.id < registrantId) {
       console.debug("Inconsistent playfield with authoritive id, syncing", errors)
       this.sync(peer)
     } else {
@@ -412,10 +411,10 @@ class App {
     this.sync(peer)
     this.connections.broadcast({
       chern: {
-        connecting: peer.idGet(),
+        connecting: peer.id,
         peers: Array.from(this.connections.peersGet().values()).
           map(p => p.serialize()).
-          concat({id: this.connections.registrantId(), player: this.viewer.idGet()}),
+          concat({id: this.connections.registrantId(), player: this.viewer.id}),
         maxPlayers: this.maxPlayers
       }
     })
@@ -439,8 +438,8 @@ class App {
   
   serialize() {
     return {
-      game: this.game.idGet(),
-      viewer: this.viewer.idGet(),
+      game: this.game.id,
+      viewer: this.viewer.id,
       playfield: this.playfield.serialize(),
       maxPlayers: this.maxPlayers
     }
@@ -844,8 +843,8 @@ function run(urlCards:string, urlCardBack:string) {
     tblPlayers.innerHTML = ''
     for (const peer of peers) {
       const row = tblPlayers.insertRow()
-      row.insertCell().innerText = peer.idGet().slice(7)
-      row.insertCell().innerText = peer.playerGet().idGet()
+      row.insertCell().innerText = peer.id.slice(7)
+      row.insertCell().innerText = peer.playerGet().id
       row.insertCell().innerText = peer.status()
     }
   }
@@ -945,7 +944,7 @@ function run(urlCards:string, urlCardBack:string) {
     for (const game of app.games) {
       const opt = document.createElement("option")
       opt.text = game.description
-      opt.value = game.idGet()
+      opt.value = game.id
       elGames.add(opt)
     }
     elGames.addEventListener(
@@ -991,7 +990,7 @@ function run(urlCards:string, urlCardBack:string) {
       dom.demandById("peerjs-target", HTMLInputElement).value = serialized.target ?? ''
       dom.demandById("peerjs-host", HTMLInputElement).value = serialized.host ?? ''
       app.restore(serialized.app)
-      dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().idGet()
+      dom.demandById("game-type", HTMLSelectElement).value = app.gameGet().id
     }
 
     return state != undefined
@@ -1000,10 +999,10 @@ function run(urlCards:string, urlCardBack:string) {
   dom.demandById("load").addEventListener("click", restore)
 
   try {
-    restore() || app.newGame(app.gameGet().idGet())
+    restore() || app.newGame(app.gameGet().id)
   } catch(e) {
     errorHandler("Problem restoring game state: " + e)
-    app.newGame(app.gameGet().idGet())
+    app.newGame(app.gameGet().id)
   }
 
   if (!elPeerJsHost.value)
@@ -1045,7 +1044,7 @@ async function getDefaultPeerJsHost() {
     app.notifierSlot.slotsUpdateCard(app.playfield, app.playfield.withUpdateCard(updates), updates)
 
     if (app.playfield.container("stock").isEmpty()) {
-      appGlobal.newGame(appGlobal.gameGet().idGet())
+      appGlobal.newGame(appGlobal.gameGet().id)
     }
     
     window.setTimeout(
@@ -1091,7 +1090,7 @@ async function getDefaultPeerJsHost() {
   ]
 
   const peer = {
-    idGet: () => 'test',
+    id: 'test',
     send: (data:any) => (app as any).onReceiveData(data, peer)
   } as PeerPlayer
   

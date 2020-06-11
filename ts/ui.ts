@@ -420,7 +420,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     const slotSrc = selected[0].uislot.slot()
     const slotSrc_ = slotSrc.remove(cardsSrc)
     const cnt:ContainerSlotCard = this._playfield.container(this.idCnt)
-    const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.idGet(),
+    const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id,
                                   cardsSrc.map(wc => cardFaceUp(false, wc)))
 
     const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [undefined, slotDst_]]
@@ -434,7 +434,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     for (const [slot, slot_] of updates) {
       if (!this.children.some(uislot => slot_.isId(uislot.idSlot, uislot.idCnt))) {
         const uislot = new UISlotSpread(
-          cnt.idGet(),
+          cnt.id,
           this.selection,
           this.owner,
           this.viewer,
@@ -865,6 +865,7 @@ export class UICard extends UIMovable {
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
       this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withUpdateCard(updates), updates)
     }
+    this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withUpdateCard(updates), updates)
   }
   
   protected onClick() {
