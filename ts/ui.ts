@@ -183,7 +183,7 @@ abstract class UISlotCard extends UIActionable {
     )
   }
 
-  abstract change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void
+  abstract change(playfield_:Playfield, move:MoveCards):void
   
   uiMovablesForSlots(slots:Slot[]):UIMovable[] {
     return Array.from(slots).some(s => this.slot().is(s)) ? this.children : []
@@ -204,8 +204,8 @@ abstract class UISlotCard extends UIActionable {
     this.eventsSlot.removeAll()
   }
   
-  slot():SlotCard {
-    return this._playfield.container(this.idCnt).slot(this.idSlot)
+  slot(playfield=this._playfield):SlotCard {
+    return playfield.container(this.idCnt).slot(this.idSlot)
   }
   
   onCardClicked(uicard:UICard) {
@@ -279,7 +279,8 @@ export class UISlotSingle extends UISlotCard {
     return space
   }
   
-  change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void {
+  change(playfield_:Playfield, move:SlotCards):void {
+    const slot_ = this.slot(playfield_)
     if (slot_.isEmpty()) {
       const space = this.spaceMake()
       this.elCard.replaceWith(space)
@@ -326,8 +327,8 @@ export class UISlotSpread extends UISlotCard {
     this.cardHeight = cardHeight
   }
 
-  change(playfield_:Playfield, slot:SlotCard|undefined, slot_:SlotCard):void {
-    const cards_ = Array.from(slot_)
+  change(playfield_:Playfield, move:SlotCards):void {
+    const cards_ = this.slot(_playfield)
 
     let idx = this.children.length - 1
     while (idx > cards_.length - 1) {
@@ -424,37 +425,38 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
                                   cardsSrc.map(wc => cardFaceUp(false, wc)))
 
     const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [undefined, slotDst_]]
-    this.notifierSlot.slotsUpdateCard(this._playfield, this._playfield.withUpdateCard(updates), updates)
+    
+    const [playfield_, updates, move] = this._playfield.withMoveCards(new MoveCards(cardsSrc, slotDst_))
+    
+    this.notifierSlot.slotsUpdateCard(this._playfield, playfield, move, updates)
   }
   
-  change(playfield_:Playfield, cnt:ContainerSlotCard, cnt_:ContainerSlotCard, updates:UpdateSlot<SlotCard>[]):void {
-    // Deletes not handled for now
-    assert(Array.from(cnt).every(c => Array.from(cnt_).some(c_ => c.is(c_))), "Some slots not in multi")
+  change(playfield_:Playfield, cnt:ContainerSlotCard, cnt_:ContainerSlotCard, move:MoveCards):void {
+    if (this.idCnt != move.slotDst.idCnt)
+      return
+    
+    if (!this.children.some(uislot => move.slotDst.isId(uislot.idSlot, uislot.idCnt))) {
+      const uislot = new UISlotSpread(
+        cnt.id,
+        this.selection,
+        this.owner,
+        this.viewer,
+        playfield_,
+        move.slotDst.id,
+        this.notifierSlot,
+        this.images,
+        this.cardWidth,
+        this.cardHeight,
+        `${this.cardWidth}px`,
+        ['slot', 'slot-overlap-vert'],
+        undefined,
+        this.actionLongPress
+      )
 
-    for (const [slot, slot_] of updates) {
-      if (!this.children.some(uislot => slot_.isId(uislot.idSlot, uislot.idCnt))) {
-        const uislot = new UISlotSpread(
-          cnt.id,
-          this.selection,
-          this.owner,
-          this.viewer,
-          playfield_,
-          slot_.id,
-          this.notifierSlot,
-          this.images,
-          this.cardWidth,
-          this.cardHeight,
-          `${this.cardWidth}px`,
-          ['slot', 'slot-overlap-vert'],
-          undefined,
-          this.actionLongPress
-        )
-
-        uislot.init()
-        uislot.change(playfield_, slot, slot_)
-        this.element.appendChild(uislot.element)
-        this.children.push(uislot)
-      }
+      uislot.init()
+      uislot.change(playfield_, move)
+      this.element.appendChild(uislot.element)
+      this.children.push(uislot)
     }
   }
 }

@@ -1,7 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  CardsMove, Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, MoveCards, MoveChips, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
@@ -134,14 +134,14 @@ class App {
     this.game.makeUi(this.playfield, this)
     dom.demandById("player").innerText = this.viewer.id
 
-    for (const cnt of this.playfield.containers) {
+    for (const cnt of this.playfield.containersCard) {
       for (const slot of cnt) {
         this.notifierSlot.slot(cnt.id, slot.id).dispatchEvent(
           new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.id)
         )
       }
       this.notifierSlot.container(cnt.id).dispatchEvent(
-        new EventContainerChange(this.playfield, this.playfield, cnt.id, Array.from(cnt).map(s => [s,s]))
+        new EventContainerChange(this.playfield, this.playfield, cnt.id)
       )
     }
 
@@ -152,7 +152,7 @@ class App {
         )
       }
       this.notifierSlot.container(cnt.id).dispatchEvent(
-        new EventContainerChange(this.playfield, this.playfield, cnt.id, Array.from(cnt).map(s => [s,s]))
+        new EventContainerChange(this.playfield, this.playfield, cnt.id)
       )
     }
   }
@@ -165,26 +165,24 @@ class App {
     return this.game
   }
 
-  preSlotUpdateCard(move:CardsMove, updates:UpdateSlot<SlotCard>[],
-                    localAction:boolean):[UIMovable, Vector][] {
+  preSlotUpdateCard(move:MoveCards, updates:UpdateSlot<SlotCard>[], localAction:boolean):[UIMovable, Vector][] {
     if (localAction) {
       this.connections.broadcast({moveCard: { move: move.serialize() }})
     }
 
-    return this.preSlotUpdate(moves, updates, localAction)
+    return this.preSlotUpdate(move, updates, localAction)
   }
 
-  preSlotUpdateChip(move:CardsMove, updates:UpdateSlot<SlotChip>[],
-                    localAction:boolean):[UIMovable, Vector][] {
+  preSlotUpdateChip(move:MoveChips, updates:UpdateSlot<SlotChip>[], localAction:boolean):[UIMovable, Vector][] {
     if (localAction) {
-      this.connections.broadcast({slotUpdatesChip: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
+      this.connections.broadcast({moveChip: { move: move.serialize() }})
     }
 
     return this.preSlotUpdate(updates, localAction)
   }
   
-  private preSlotUpdate(move:CardsMove, updates:UpdateSlot<Slot>[], localAction:boolean):[UIMovable, Vector][] {
-    const slotsOld = move.cards.map(t => t[1])
+  private preSlotUpdate(move:MoveCards, updates:UpdateSlot<Slot>[], localAction:boolean):[UIMovable, Vector][] {
+    const slotsOld = move.slotItems.map(si => si[0])
     return this.root.uiMovablesForSlots(slotsOld).map(uim => [uim, uim.coordsAbsolute()])
   }
 
