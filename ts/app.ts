@@ -1,7 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  CardMove, Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  CardsMove, Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
@@ -165,16 +165,16 @@ class App {
     return this.game
   }
 
-  preSlotUpdateCard(moves:[WorldCard,SlotCard][], updates:UpdateSlot<SlotCard>[],
+  preSlotUpdateCard(move:CardsMove, updates:UpdateSlot<SlotCard>[],
                     localAction:boolean):[UIMovable, Vector][] {
     if (localAction) {
-      this.connections.broadcast({movesCard: { moves: moves.map(([c, s]) => [c.serialize(), [s_.id, s_.idCnt]]) }})
+      this.connections.broadcast({moveCard: { move: move.serialize() }})
     }
 
     return this.preSlotUpdate(moves, updates, localAction)
   }
 
-  preSlotUpdateChip(moves:[WorldCard,SlotCard][], updates:UpdateSlot<SlotChip>[],
+  preSlotUpdateChip(move:CardsMove, updates:UpdateSlot<SlotChip>[],
                     localAction:boolean):[UIMovable, Vector][] {
     if (localAction) {
       this.connections.broadcast({slotUpdatesChip: updates.map(([s, s_]) => [s?.serialize(), s_.serialize()])})
@@ -183,15 +183,15 @@ class App {
     return this.preSlotUpdate(updates, localAction)
   }
   
-  private preSlotUpdate(updates:UpdateSlot<Slot>[], localAction:boolean):[UIMovable, Vector][] {
-    const slotsOld = updates.map(u => u[0]).filter(u => u) as Slot[]
+  private preSlotUpdate(move:CardsMove, updates:UpdateSlot<Slot>[], localAction:boolean):[UIMovable, Vector][] {
+    const slotsOld = move.cards.map(t => t[1])
     return this.root.uiMovablesForSlots(slotsOld).map(uim => [uim, uim.coordsAbsolute()])
   }
 
-  postSlotUpdate(updates:UpdateSlot<Slot>[], uimovs:[UIMovable, Vector][], localAction:boolean) {
+  postSlotUpdate(move:CardsMove, updates:UpdateSlot<Slot>[], uimovs:[UIMovable, Vector][], localAction:boolean) {
     const msDuration = localAction ? 250 : 1000
     
-    const uimovs_ = this.root.uiMovablesForSlots(updates.map(u => u[1]))
+    const uimovs_ = this.root.uiMovablesForSlots([move.slotDest])
     
     for (const [uimov, start] of uimovs) {
       const uimov_ = uimovs_.find(u_ => u_.is(uimov))
@@ -346,20 +346,20 @@ class App {
         }
       }
       this.onPeerChanged(this.connections.peersGet())
-    } else if (data.movesCard) {
+    } else if (data.moveCard) {
       if (!peer.consistent) {
         console.warn("Peer inconsistent", peer.id)
         return
       }
       
-      const moves = data.movesCard.moves.map(s => CardMove.fromSerialized(s))
+      const move = data.moveCard.move.map(s => CardMove.fromSerialized(s, this.playfield))
 
-      const playfield_ = this.playfield.withCardsMove(moves)
+      const [playfield_,updates] = this.playfield.withCardsMove(move)
       const errors = playfield_.validateConsistencyCard(updates)
       if (errors.length > 0) {
         this.onPlayfieldInconsistent(peer, errors)
       } else {
-        this.notifierSlot.slotsUpdateCard(this.playfield, playfield_, moves, updates, false)
+        this.notifierSlot.slotsUpdateCard(this.playfield, playfield_, move, updates, false)
       }
     } else if (data.slotUpdatesChip) {
       if (!peer.consistent) {

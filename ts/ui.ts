@@ -220,15 +220,15 @@ abstract class UISlotCard extends UIActionable {
   }
   
   protected onAction(uiCards:readonly UICard[]) {
-    const cardsSrc = uiCards.map(ui => ui.wcard)
+    const cardsSrc = uiCards.map(ui => [ui.wcard,ui.uislot.slot()])
     assert(cardsSrc.length, "Source cards empty")
-    const slotSrc = uiCards[0].uislot.slot()
-    const slotDst = this.slot()
+    const move = new CardsMove(cardSrc, this.slot())
+    const result = this._playfield.withUpdateCard(move)
+    const result = this.notifierSlot.slotsUpdateCard(this._playfield, result[0], move, result[1])
     if (slotSrc === slotDst) {
       // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
       const slotSrc_ = slotSrc.remove(cardsSrc).add(cardsSrc)
       const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_]]
-      this.notifierSlot.slotsUpdateCard(this._playfield, this._playfield.withUpdateCard(updates), updates)
     } else {
       // case 2: diff slot. Always flip face-up, unless a human player has deliberately flipped it.
       
