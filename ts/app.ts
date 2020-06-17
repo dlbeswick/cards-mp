@@ -1,7 +1,7 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, MoveCards, MoveChips, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdateSlot
+  Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, ItemSlot, MoveCards, MoveChips, MoveItems, NotifierSlot, PeerPlayer, Player, Playfield, Slot, SlotCard, SlotChip, UpdatesSlot, UpdatesSlotCard, UpdatesSlotChip
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
@@ -35,12 +35,10 @@ document.addEventListener("deviceready", () => {
 })
 
 class App {
-  readonly selection:Selection = new Selection()
-  readonly notifierSlot:NotifierSlot
-  readonly connections:Connections = new Connections(this.onPeerReconnect.bind(this))
-  readonly games:Game[]
+  readonly selection = new Selection()
+  readonly notifierSlot = new NotifierSlot<[UpdatesSlot, [UIMovable, Vector][], boolean]>()
+  readonly connections = new Connections(this.onPeerReconnect.bind(this))
   private maxPlayers:number = 2
-  private root:UISlotRoot
   private cardWidth = 74
   private cardHeight = 112
   private viewer:Player
@@ -48,10 +46,9 @@ class App {
   private audioCtx?:AudioContext
   private playfield = new Playfield([], [])
   private debugMessages:any[] = []
+  private root = new UISlotRoot()
   
-  constructor(games:Game[],
-              notifierSlot:NotifierSlot,
-              root:UISlotRoot,
+  constructor(readonly games:Game[],
               readonly images:Images,
               readonly onNewGame:(game:Game) => void = () => {},
               readonly onMaxPlayers:(maxPlayers:number) => void = () => {},
@@ -59,11 +56,8 @@ class App {
              ) {
     
     assertf(() => games)
-    this.games = games
     this.game = games[0]
-    this.notifierSlot = notifierSlot
     this.viewer = this.game.players[0]
-    this.root = root
   }
 
   audioCtxGet():AudioContext|undefined {
@@ -74,9 +68,9 @@ class App {
   }
 
   init() {
-    this.notifierSlot.registerSlotUpdate(this.preSlotUpdateCard.bind(this))
-    this.notifierSlot.registerSlotUpdateChip(this.preSlotUpdateChip.bind(this))
-    this.notifierSlot.registerPostSlotUpdate(this.postSlotUpdate.bind(this))
+    this.notifierSlot.registerMoveItems(this.moveItems.bind(this))
+    this.notifierSlot.registerUpdateSlotsPre(this.updateSlotsPre.bind(this))
+    this.notifierSlot.registerUpdateSlotsPost(this.updateSlotsPost.bind(this))
     this.notifierSlot.playfield.addEventListener("playfieldchange",
                                                  (e:EventPlayfieldChange) => this.playfield = e.playfield_)
   }
@@ -165,31 +159,34 @@ class App {
     return this.game
   }
 
-  preSlotUpdateCard(move:MoveCards, updates:UpdateSlot<SlotCard>[], localAction:boolean):[UIMovable, Vector][] {
+  private moveItems(move:MoveItems, updates:UpdatesSlot, localAction:boolean):
+  [UpdatesSlot, [UIMovable, Vector][], boolean] {
+    
     if (localAction) {
-      this.connections.broadcast({moveCard: { move: move.serialize() }})
+      this.connections.broadcast(move.serialize())
     }
 
-    return this.preSlotUpdate(move, updates, localAction)
+    return [updates, this.uimoveablesForUpdate(updates), localAction]
   }
 
-  preSlotUpdateChip(move:MoveChips, updates:UpdateSlot<SlotChip>[], localAction:boolean):[UIMovable, Vector][] {
+  private updateSlotsPre(updates:UpdatesSlot, localAction:boolean):[UpdatesSlot, [UIMovable, Vector][], boolean] {
     if (localAction) {
-      this.connections.broadcast({moveChip: { move: move.serialize() }})
+      this.connections.broadcast(updates.serialize())
     }
 
-    return this.preSlotUpdate(updates, localAction)
+    return [updates, this.uimoveablesForUpdate(updates), localAction]
   }
-  
-  private preSlotUpdate(move:MoveCards, updates:UpdateSlot<Slot>[], localAction:boolean):[UIMovable, Vector][] {
-    const slotsOld = move.slotItems.map(si => si[0])
+
+  private uimoveablesForUpdate(updates:UpdatesSlot):[UIMovable, Vector][] {
+    const slotsOld = updates.updatesSlot().map(si => si[0]).filter(s => s) as Slot[]
     return this.root.uiMovablesForSlots(slotsOld).map(uim => [uim, uim.coordsAbsolute()])
   }
-
-  postSlotUpdate(move:CardsMove, updates:UpdateSlot<Slot>[], uimovs:[UIMovable, Vector][], localAction:boolean) {
+  
+  private updateSlotsPost(resultPre:[UpdatesSlot, [UIMovable, Vector][], boolean]) {
+    const [updates, uimovs, localAction] = resultPre
     const msDuration = localAction ? 250 : 1000
     
-    const uimovs_ = this.root.uiMovablesForSlots([move.slotDest])
+    const uimovs_ = this.root.uiMovablesForSlots(updates.updatesSlot().map(si => si[1]))
     
     for (const [uimov, start] of uimovs) {
       const uimov_ = uimovs_.find(u_ => u_.is(uimov))
@@ -272,11 +269,13 @@ class App {
   }
 
   revealAll() {
-    const updates:UpdateSlot<SlotCard>[] = this.playfield.containers.flatMap(
-      cnt => cnt.map(wc => wc.withFaceStateConscious(true, true))
+    const updates:UpdatesSlotCard = new UpdatesSlotCard(
+      this.playfield.containersCard.flatMap(
+        cnt => cnt.map(wc => wc.withFaceStateConscious(true, true))
+      )
     )
     
-    this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withUpdateCard(updates), updates)
+    this.notifierSlot.slotsUpdate(this.playfield, this.playfield.withUpdateCard(updates), updates, true)
   }
 
   onReceiveData(data:any, peer:PeerPlayer) {
@@ -350,14 +349,14 @@ class App {
         return
       }
       
-      const move = data.moveCard.move.map(s => CardMove.fromSerialized(s, this.playfield))
+      const move = data.moveCard.move.map((s:any) => MoveCards.fromSerialized(s, this.playfield))
 
-      const [playfield_,updates] = this.playfield.withCardsMove(move)
+      const [playfield_,updates] = this.playfield.withMoveCards(move)
       const errors = playfield_.validateConsistencyCard(updates)
       if (errors.length > 0) {
         this.onPlayfieldInconsistent(peer, errors)
       } else {
-        this.notifierSlot.slotsUpdateCard(this.playfield, playfield_, move, updates, false)
+        this.notifierSlot.itemsMove(this.playfield, playfield_, move, updates, false)
       }
     } else if (data.slotUpdatesChip) {
       if (!peer.consistent) {
@@ -365,16 +364,13 @@ class App {
         return
       }
       
-      const updates = (data.slotUpdatesChip as UpdateSlot<SlotChip>[]).map(
-        ([s,s_]) => [s ? SlotChip.fromSerialized(s) : undefined, SlotChip.fromSerialized(s_)]
-      ) as UpdateSlot<SlotChip>[]
-      
+      const updates = UpdatesSlotChip.fromSerialized(data.slotUpdatesChip)
       const playfield_ = this.playfield.withUpdateChip(updates)
       const errors = playfield_.validateConsistencyChip(updates)
       if (errors.length > 0) {
         this.onPlayfieldInconsistent(peer, errors)
       } else {
-        this.notifierSlot.slotsUpdateChip(this.playfield, playfield_, updates, false)
+        this.notifierSlot.slotsUpdate(this.playfield, playfield_, updates, false)
       }
     } else if (data.deny) {
       errorHandler("Connection denied: " + data.deny.message)
@@ -454,8 +450,8 @@ class App {
     const step = (playfield:Playfield) => {
       const it = gen.next()
       if (!it.done) {
-        const [playfield_, updates] = it.value
-        this.notifierSlot.slotsUpdateCard(playfield, playfield_, updates)
+        const [playfield_, updates, move] = playfield.withMoveCards(it.value)
+        this.notifierSlot.itemsMove(playfield, playfield_, move, updates, true)
         window.setTimeout(step.bind(this, playfield), 250)
       }
     }
@@ -855,8 +851,6 @@ function run(urlCards:string, urlCardBack:string) {
       new GamePoker(makeUiPoker),
       new GamePokerChinese(makeUiPokerChinese),
     ],
-    new NotifierSlot(),
-    new UISlotRoot(),
     new Images(urlCards, urlCardBack),
     (game:Game) => {
       elMaxPlayers.max = game.playersActive().length.toString()
@@ -1020,7 +1014,7 @@ async function getDefaultPeerJsHost() {
   }
 }
   
-(window as any).mptest = () => {
+/*(window as any).mptest = () => {
   function moveStock() {
     const app = appGlobal as any
     const playfield = app.playfield
@@ -1133,5 +1127,5 @@ async function getDefaultPeerJsHost() {
 
   work()
 }
-
+*/
 (window as any).mptest_latency = false
