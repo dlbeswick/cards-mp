@@ -1,11 +1,26 @@
 import { assert, assertf } from './assert.js'
 import * as array from "./array.js"
 import * as dom from "./dom.js"
-import { fsort_id, Card, Chip, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventPlayfieldChange, EventSlotChange, MoveCards, NotifierSlotInternal, Player, Playfield, Slot, SlotCard, SlotChip, UpdatesSlot, WorldCard } from './game.js'
+import { fsort_id, Card, Chip, ContainerSlot, ContainerSlotCard, ContainerSlotChip, EventContainerChange, EventMapNotifierSlot, EventPlayfieldChange, EventSlotChange, ItemSlot, MoveCards, MoveChips, NotifierSlotInternal, Player, Playfield, Slot, SlotCard, SlotChip, SlotItem, UpdatesSlot, WorldCard } from './game.js'
 import { Images } from './images.js'
 import { Vector } from './math.js'
 
 const HighDetail = false
+
+interface UISlotItem<S extends SlotItem<T>, T extends ItemSlot, C extends ContainerSlot<S, T>> {
+  slot():S
+  item():T
+  container():C
+}
+
+function uiitemsBySlot<S extends SlotItem<T>, T extends ItemSlot, C extends ContainerSlot<S, T>>(
+  uiItems:readonly UISlotItem<S, T, C>[],
+  cardState:(i:UISlotItem<S, T, C>) => T) {
+  
+  return array.
+    group_by(uiItems, ui => ui.slot(), (a, b) => a.id - b.id).
+    map((([s,uics]) => [s, uics.map(uic => cardState(uic))] as [S, T[]]))
+}
 
 function cardFaceUp(isSecretContainer:boolean, wc:WorldCard) {
   let faceUp
@@ -203,9 +218,13 @@ abstract class UISlotCard extends UIActionable {
       child.destroy()
     this.eventsSlot.removeAll()
   }
+
+  container(playfield=this._playfield):ContainerSlotCard {
+    return playfield.containerCardDemand(this.idCnt)
+  }
   
   slot(playfield=this._playfield):SlotCard {
-    return playfield.containerCardDemand(this.idCnt).slot(this.idSlot)
+    return this.container(playfield).slot(this.idSlot)
   }
   
   onCardClicked(uicard:UICard) {
@@ -220,11 +239,7 @@ abstract class UISlotCard extends UIActionable {
   }
   
   protected onAction(uiCards:readonly UICard[]) {
-    const cardsSrc =
-      array.
-      group_by(uiCards, ui => ui.uislot.slot(), (a, b) => a.id - b.id).
-      map((([s,uics]) => [s, uics.map(uic => uic.wcard)] as [SlotCard, WorldCard[]]))
-    
+    const cardsSrc = uiitemsBySlot(uiCards, uic => cardFaceUp(uic.container().secret, uic.item()))
     assert(cardsSrc.length, "Source cards empty")
     const [playfield_, updates, move] = this._playfield.withMoveCards(new MoveCards(cardsSrc, this.slot()))
     this.notifierSlot.itemsMove(this._playfield, playfield_, move, updates, true)
@@ -405,46 +420,42 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
   }
   
   onAction(selected:readonly UICard[]) {
-    const cardsSrc = selected.map(ui => ui.wcard)
-    const slotSrc = selected[0].uislot.slot()
-    const slotSrc_ = slotSrc.remove(cardsSrc)
-    const cnt:ContainerSlotCard = this._playfield.container(this.idCnt)
-    const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id,
-                                  cardsSrc.map(wc => cardFaceUp(false, wc)))
+    const cardsSrc = uiitemsBySlot(selected, uic => cardFaceUp(uic.container().secret, uic.item()))
+    const cnt = this._playfield.containerCardDemand(this.idCnt)
+    const slotDst = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id, [])
 
-    const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [undefined, slotDst_]]
-    
-    const [playfield_, updates, move] = this._playfield.withMoveCards(new MoveCards(cardsSrc, slotDst_))
-    
-    this.notifierSlot.slotsUpdateCard(this._playfield, playfield, move, updates)
+    const [playfield_, updates, move] = this._playfield.withMoveCards(new MoveCards(cardsSrc, slotDst))
+    this.notifierSlot.itemsMove(this._playfield, playfield_, move, updates, true)
   }
   
   change(playfield_:Playfield, cnt:ContainerSlotCard, cnt_:ContainerSlotCard):void {
-    if (this.idCnt != cnt_.idCnt)
+    if (this.idCnt != cnt_.id)
       return
-    
-    if (!this.children.some(uislot => move.slotDst.isId(uislot.idSlot, uislot.idCnt))) {
-      const uislot = new UISlotSpread(
-        cnt.id,
-        this.selection,
-        this.owner,
-        this.viewer,
-        playfield_,
-        move.slotDst.id,
-        this.notifierSlot,
-        this.images,
-        this.cardWidth,
-        this.cardHeight,
-        `${this.cardWidth}px`,
-        ['slot', 'slot-overlap-vert'],
-        undefined,
-        this.actionLongPress
-      )
 
-      uislot.init()
-      uislot.change(playfield_, move)
-      this.element.appendChild(uislot.element)
-      this.children.push(uislot)
+    for (const slot of cnt_) {
+      if (!this.children.some(uislot => slot.isId(uislot.idSlot, uislot.idCnt))) {
+        const uislot = new UISlotSpread(
+          cnt.id,
+          this.selection,
+          this.owner,
+          this.viewer,
+          playfield_,
+          slot.id,
+          this.notifierSlot,
+          this.images,
+          this.cardWidth,
+          this.cardHeight,
+          `${this.cardWidth}px`,
+          ['slot', 'slot-overlap-vert'],
+          undefined,
+          this.actionLongPress
+        )
+
+        uislot.init()
+        uislot.change(playfield_)
+        this.element.appendChild(uislot.element)
+        this.children.push(uislot)
+      }
     }
   }
 }
@@ -661,8 +672,8 @@ export class UISlotChip extends UIActionable {
     this.eventsSlot.add(
       "slotchange",
       (e:EventSlotChange) => {
-        this.change(e.playfield_, e.playfield.containerChip(e.idCnt).slot(e.idSlot),
-                    e.playfield_.containerChip(e.idCnt).slot(e.idSlot))
+        this.change(e.playfield_, e.playfield.containerChipDemand(e.idCnt).slot(e.idSlot),
+                    e.playfield_.containerChipDemand(e.idCnt).slot(e.idSlot))
         return true
       }
     )
@@ -711,8 +722,12 @@ export class UISlotChip extends UIActionable {
     this.eventsSlot.removeAll()
   }
   
+  container():ContainerSlotChip {
+    return this._playfield.containerChipDemand(this.idCnt)
+  }
+  
   slot():SlotChip {
-    return this._playfield.containerChip(this.idCnt).slot(this.idSlot)
+    return this.container().slot(this.idSlot)
   }
 
   top():UIChip|undefined {
@@ -730,21 +745,15 @@ export class UISlotChip extends UIActionable {
   }
   
   protected onAction(selected:readonly UIChip[]) {
-    assert(selected.every(ui => ui.uislot.slot() == selected[0].uislot.slot()), "Chip selection has different slots")
-    const slotSrc = selected[0].uislot.slot()
-    const toMove = selected
-    const chipsSrc = toMove.map(ui => ui.chip)
-    const slotDst = this.slot()
-    if (slotSrc !== slotDst) {
-      const slotSrc_ = slotSrc.remove(chipsSrc)
-      const slotDst_ = slotDst.add(chipsSrc)
-      const updates:UpdateSlot<SlotChip>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
-      this.notifierSlot.slotsUpdateChip(this._playfield, this._playfield.withUpdateChip(updates), updates)
+    const chipsSrc = uiitemsBySlot(selected, ui => ui.item()).filter(si => !si[0].is(this.slot()))
+    if (chipsSrc.length) {
+      const [playfield_, updates, move] = this._playfield.withMoveChips(new MoveChips(chipsSrc, this.slot()))
+      this.notifierSlot.itemsMove(this._playfield, playfield_, move, updates, true)
     }
   }
 }
 
-export class UIChip extends UIMovable {
+export class UIChip extends UIMovable implements UISlotItem<SlotChip, Chip, ContainerSlotChip> {
   readonly chip:Chip
   readonly uislot:UISlotChip
   readonly img:HTMLImageElement
@@ -770,6 +779,18 @@ export class UIChip extends UIMovable {
   init() {
     super.init(this.img)
   }
+
+  slot() {
+    return this.uislot.slot()
+  }
+
+  container() {
+    return this.uislot.container()
+  }
+  
+  item() {
+    return this.chip
+  }
   
   is(rhs:UIChip) {
     return this.chip.is(rhs.chip)
@@ -790,7 +811,7 @@ export class UIChip extends UIMovable {
 /*
   Assumptions: 1->1 UICard->Card on given Playfield
 */
-export class UICard extends UIMovable {
+export class UICard extends UIMovable implements UISlotItem<SlotCard, WorldCard, ContainerSlotCard> {
   readonly wcard:WorldCard
   readonly uislot:UISlotCard
   private readonly faceUp:boolean
@@ -829,6 +850,10 @@ export class UICard extends UIMovable {
     super.init(this.img)
     return this
   }
+
+  item() { return this.wcard }
+  slot() { return this.uislot.slot() }
+  container() { return this.uislot.container() }
   
   equalsVisually(rhs:this) {
     return this.wcard.card.is(rhs.wcard.card) && this.faceUp == rhs.faceUp
@@ -840,22 +865,9 @@ export class UICard extends UIMovable {
   
   private doMove(uicards:readonly UICard[]) {
     assert(uicards.length, "Move of no cards")
-    const cardsSrc = uicards.map(ui => ui.wcard)
-    const slotSrc = uicards[0].uislot.slot()
-    const slotDst = this.uislot.slot()
-
-    if (slotSrc === slotDst) {
-      const slot_ = slotSrc.remove(cardsSrc).add(cardsSrc, this.wcard)
-      const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slot_]]
-      this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withUpdateCard(updates), updates)
-    } else {
-      const slotSrc_ = slotSrc.remove(cardsSrc)
-      const slotDst_ = slotDst.add(cardsSrc.map(wc => cardFaceUp(slotDst.container(this.playfield()).secret, wc)),
-                                   this.wcard)
-      const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
-      this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withUpdateCard(updates), updates)
-    }
-    this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withUpdateCard(updates), updates)
+    const cardsSrc = uiitemsBySlot(uicards, uic => cardFaceUp(uic.container().secret, uic.item()))
+    const [playfield_, updates, move] = this.playfield().withMoveCards(new MoveCards(cardsSrc, this.slot(), this.wcard))
+    this.notifierSlot.itemsMove(this.playfield(), playfield_, move, updates, true)
   }
   
   protected onClick() {
@@ -882,16 +894,18 @@ export class UICard extends UIMovable {
   
   private flip() {
     const slot = this.uislot.slot()
-    const slot_ = slot.replace(this.wcard, this.wcard.withFaceStateConscious(!this.wcard.faceUp, this.wcard.faceUp))
-    const updates:UpdateSlot<SlotCard>[] = [[slot, slot_]]
-    this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withUpdateCard(updates), updates)
+    const card = this.wcard.withFaceStateConscious(!this.wcard.faceUp, this.wcard.faceUp)
+    const [playfield_, updates, move] =
+      this.playfield().withMoveCards(new MoveCards([[this.slot(), [card]]], slot, slot.after(card)))
+    this.notifierSlot.itemsMove(this.playfield(), playfield_, move, updates, true)
   }
   
   private turn() {
     const slot = this.uislot.slot()
-    const slot_ = slot.replace(this.wcard, this.wcard.withTurned(!this.wcard.turned))
-    const updates:UpdateSlot<SlotCard>[] = [[slot, slot_]]
-    this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withUpdateCard(updates), updates)
+    const card = this.wcard.withTurned(!this.wcard.turned)
+    const [playfield_, updates, move] =
+      this.playfield().withMoveCards(new MoveCards([[this.slot(), [card]]], slot, slot.after(card)))
+    this.notifierSlot.itemsMove(this.playfield(), playfield_, move, updates, true)
   }
 }
 

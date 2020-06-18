@@ -103,7 +103,7 @@ abstract class IdentifiedVar<IdType=string> extends IdentifiedByVal<IdType> {
   }
 }
 
-abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends IdentifiedVar implements Iterable<S> {
+export abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends IdentifiedVar implements Iterable<S> {
 
   readonly secret:boolean
   private readonly slots:readonly S[] = []
@@ -225,7 +225,7 @@ export interface ItemSlot extends Identified {
 }
 
 // A Slot that holds Items
-abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> {
+export abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> {
   protected readonly items:readonly T[]
   private readonly construct:(a:number, b:string, c:readonly T[]) => this
 
@@ -274,6 +274,14 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
     return this.construct(this.id, this.idCnt, this.items.slice(0, idx).concat([item_]).concat(this.items.slice(idx+1)))
   }
 
+  after(item:T):T|undefined {
+    const idx = this.items.findIndex(i => i.is(item))
+    if (idx == -1 || idx == this.items.length-1)
+      return undefined
+    else
+      return this.items[idx+1]
+  }
+  
   top():T {
     assertf(() => !this.isEmpty())
     return this.items[this.items.length-1]
@@ -670,7 +678,7 @@ export class SlotChip extends SlotItem<Chip> {
   }
 }
 
-class ContainerSlotChip extends ContainerSlot<SlotChip, Chip> {
+export class ContainerSlotChip extends ContainerSlot<SlotChip, Chip> {
   constructor(id:string, slots:readonly SlotChip[]=[], secret=false) {
     super(id,
           (id:string,slots:readonly SlotChip[],secret=false) => new ContainerSlotChip(id,slots,secret),
@@ -756,14 +764,14 @@ export class Playfield {
     const updates = new UpdatesSlotCard(
       this.moveToUpdates<WorldCard, SlotCard, MoveCards>(move, this.hasContainerCard.bind(this), true)
     )
-    return [this.withUpdateCard(updates), updates, move]
+    return [this.withUpdateSlotCard(updates), updates, move]
   }
 
   withMoveChips(move:MoveChips):[Playfield,UpdatesSlotChip,MoveChips] {
     const updates = new UpdatesSlotChip(
       this.moveToUpdates<Chip, SlotChip, MoveChips>(move, this.hasContainerChip.bind(this), false)
     )
-    return [this.withUpdateChip(updates), updates, move]
+    return [this.withUpdateSlotChip(updates), updates, move]
   }
 
   private moveToUpdates<T extends ItemSlot, S extends SlotItem<T>, U extends MoveItemsOfType<S,T>>(
@@ -807,7 +815,7 @@ export class Playfield {
     return cnt!
   }
 
-  withUpdateCard(updates:UpdatesSlotCard):Playfield {
+  withUpdateSlotCard(updates:UpdatesSlotCard):Playfield {
     assertf(() => updates.updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     return new Playfield(
@@ -816,7 +824,7 @@ export class Playfield {
     )
   }
   
-  withUpdateChip(updates:UpdatesSlotChip):Playfield {
+  withUpdateSlotChip(updates:UpdatesSlotChip):Playfield {
     assertf(() => updates.updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     return new Playfield(
@@ -1181,7 +1189,7 @@ export abstract class Game extends IdentifiedVar {
     ]
   }
   
-  *deal(players:number, playfield:Playfield):Generator<MoveCards, void> {
+  *deal(players:number, playfield:Playfield):Generator<[Playfield, UpdatesSlotCard, MoveCards], void> {
   }
   
   playfieldNewHand(players:number, playfieldOld:Playfield):Playfield {
@@ -1203,7 +1211,11 @@ export abstract class Game extends IdentifiedVar {
         const slotSrc = playfield.containerCardDemand('stock').slot(0)
         const slotDst = playfield.containerCardDemand(p.idCnts[0]).slot(0)
         
-        yield new MoveCards([[slotSrc, [slotSrc.top()]]], slotDst)
+        const result = playfield.withMoveCards(new MoveCards([[slotSrc, [slotSrc.top()]]], slotDst))
+        
+        yield result
+        
+        playfield = result[0]
       }
   }
 }

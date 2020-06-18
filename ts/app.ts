@@ -275,7 +275,7 @@ class App {
       )
     )
     
-    this.notifierSlot.slotsUpdate(this.playfield, this.playfield.withUpdateCard(updates), updates, true)
+    this.notifierSlot.slotsUpdate(this.playfield, this.playfield.withUpdateSlotCard(updates), updates, true)
   }
 
   onReceiveData(data:any, peer:PeerPlayer) {
@@ -365,7 +365,7 @@ class App {
       }
       
       const updates = UpdatesSlotChip.fromSerialized(data.slotUpdatesChip)
-      const playfield_ = this.playfield.withUpdateChip(updates)
+      const playfield_ = this.playfield.withUpdateSlotChip(updates)
       const errors = playfield_.validateConsistencyChip(updates)
       if (errors.length > 0) {
         this.onPlayfieldInconsistent(peer, errors)
@@ -450,9 +450,9 @@ class App {
     const step = (playfield:Playfield) => {
       const it = gen.next()
       if (!it.done) {
-        const [playfield_, updates, move] = playfield.withMoveCards(it.value)
+        const [playfield_, updates, move] = it.value
         this.notifierSlot.itemsMove(playfield, playfield_, move, updates, true)
-        window.setTimeout(step.bind(this, playfield), 250)
+        window.setTimeout(step.bind(this, playfield_), 250)
       }
     }
     window.setTimeout(step.bind(this, this.playfield), 250)
