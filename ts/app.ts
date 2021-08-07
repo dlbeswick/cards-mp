@@ -61,11 +61,8 @@ class App {
              ) {
     
     assertf(() => games)
-    this.games = games
     this.game = games[0]
-    this.notifierSlot = notifierSlot
     this.viewer = this.game.players[0]
-    this.root = root
   }
 
   private nextPlayfield(playfield: Playfield): Playfield {
@@ -151,7 +148,7 @@ class App {
     this.game.makeUi(this.playfield, this)
     dom.demandById("player").innerText = this.viewer.id
 
-    for (const cnt of this.playfield.containers) {
+    for (const cnt of this.playfield.containersCard) {
       for (const slot of cnt) {
         this.notifierSlot.slot(cnt.id, slot.id).dispatchEvent(
           new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.id)
@@ -463,9 +460,9 @@ class App {
     const step = (playfield: Playfield) => {
       const it = gen.next()
       if (!it.done) {
-        const [playfield_, updates] = it.value
-        this.notifierSlot.slotsUpdateCard(playfield, playfield_, updates)
-        window.setTimeout(step.bind(this, playfield), 250)
+        const [playfield_, updates, move] = it.value
+        this.notifierSlot.itemsMove(playfield, playfield_, move, updates, true)
+        window.setTimeout(step.bind(this, playfield_), 250)
       }
     }
     window.setTimeout(step.bind(this, this.playfield), 250)
@@ -864,8 +861,6 @@ function run(urlCards: string, urlCardBack: string) {
       new GamePoker(makeUiPoker),
       new GamePokerChinese(makeUiPokerChinese),
     ],
-    new NotifierSlot(),
-    new UISlotRoot(),
     new Images(urlCards, urlCardBack),
     (game: Game) => {
       elMaxPlayers.max = game.playersActive().length.toString()
@@ -1029,7 +1024,7 @@ async function getDefaultPeerJsHost() {
   }
 }
   
-(window as any).mptest = () => {
+/*(window as any).mptest = () => {
   function moveStock() {
     const app = appGlobal as any
     const playfield = app.playfield
@@ -1110,5 +1105,5 @@ async function getDefaultPeerJsHost() {
 
   work()
 }
-
+*/
 (window as any).mptest_latency = false

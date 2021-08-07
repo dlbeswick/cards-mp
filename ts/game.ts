@@ -104,7 +104,7 @@ abstract class IdentifiedVar<IdType=string> extends IdentifiedByVal<IdType> {
   }
 }
 
-abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends IdentifiedVar implements Iterable<S> {
+export abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends IdentifiedVar implements Iterable<S> {
 
   readonly secret: boolean
   private readonly slots: readonly S[] = []
@@ -542,9 +542,9 @@ export class EventPlayfieldChange extends Event {
   }
 }
 
-export interface EventMapNotifierSlot<S extends Slot> {
+export interface EventMapNotifierSlot {
   "slotchange": EventSlotChange,
-  "containerchange": EventContainerChange<S>,
+  "containerchange": EventContainerChange,
   "playfieldchange": EventPlayfieldChange
 }
 
@@ -598,10 +598,12 @@ export class NotifierSlot {
   registerSlotUpdateChip(funcPre: FuncSlotUpdatePre<SlotChip, Chip>) {
     this.slotUpdatesChip.push(funcPre)
   }
+  
+  abstract itemsMove(playfield:Playfield, playfield_:Playfield, move:MoveItems, updates:UpdatesSlot,
+                     localAction:boolean):Playfield
 
-  registerPostSlotUpdate(func: FuncSlotUpdatePost) {
-    this.postSlotUpdates.push(func)
-  }
+  abstract slotsUpdate(playfield:Playfield, playfield_:Playfield, updates:UpdatesSlot, localAction:boolean):Playfield
+}
 
   slotsUpdateCard(playfield: Playfield, playfield_: Playfield, move: MoveCards, localAction=true): Playfield {
     return this.slotsUpdate(playfield, playfield_, move, localAction,
@@ -628,8 +630,6 @@ export class NotifierSlot {
         f(move.source, move.dest, result, localAction)
     
     this.playfield.dispatchEvent(new EventPlayfieldChange(playfield, playfield_))
-    
-    return playfield_
   }
 }
 
@@ -1042,7 +1042,7 @@ export abstract class Game extends IdentifiedVar {
   
   playfieldNewHand(players: number, playfieldOld: Playfield): Playfield {
     const pf = this.playfield(players)
-    return new Playfield(pf.containers, playfieldOld.containersChip)
+    return new Playfield(pf.containersCard, playfieldOld.containersChip)
   }
 
   playersActive(): Player[] {

@@ -44,18 +44,22 @@ export function group_by<T,G>(ary:readonly T[], group:(a:T) => G, sort:(a:G, b:G
   const result:[G,T[]][] = []
   let s = sorted_by(ary, group, sort)
   
-  const g = group(s[0])
+  let g:G = group(s[0])
   while (s.length) {
-    const accum = [] as T[]
+    const accum = [s[0]]
+    s = s.slice(1)
+    let g_ = g
     for (const el of s) {
-      const g_ = group(el)
-      if (sort(g, g) == 0) {
+      g_ = group(el)
+      if (sort(g, g_) == 0) {
         accum.push(el)
       } else {
-        result.push([g,accum])
-        s = s.slice(accum.length)
+        break
       }
     }
+    result.push([g,accum])
+    g = g_
+    s = s.slice(accum.length)
   }
   return result
 }
