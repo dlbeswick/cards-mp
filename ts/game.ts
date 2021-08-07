@@ -5,7 +5,7 @@ import { Vector } from './math.js'
 
 export type UpdateSlot<S extends Slot> = [S|undefined, S]
 
-export function aryIdEquals<T extends Identified>(lhs:T[], rhs:T[]) {
+export function aryIdEquals<T extends Identified>(lhs: T[], rhs: T[]) {
   if (lhs.length != rhs.length)
     return false
 
@@ -17,22 +17,22 @@ export function aryIdEquals<T extends Identified>(lhs:T[], rhs:T[]) {
 }
 
 interface Identified {
-  is(rhs:this):boolean
-  serialize():any
+  is(rhs: this): boolean
+  serialize(): any
 }
 
-function fsort_id<IdType extends string>(a:IdentifiedByVal<IdType>, b:IdentifiedByVal<IdType>):number {
+function fsort_id<IdType extends string>(a: IdentifiedByVal<IdType>, b: IdentifiedByVal<IdType>): number {
   return a.id.localeCompare(b.id)
 }
 
 abstract class IdentifiedByVal<IdType> implements Identified {
-  abstract get id():IdType
+  abstract get id(): IdType
   
-  is(rhs:this):boolean {
+  is(rhs: this): boolean {
     return this.isId(rhs.id)
   }
   
-  isId(id:IdType):boolean {
+  isId(id: IdType): boolean {
     return this.id == id
   }
 
@@ -42,76 +42,76 @@ abstract class IdentifiedByVal<IdType> implements Identified {
 }
 
 abstract class IdentifiedVar<IdType=string> extends IdentifiedByVal<IdType> {
-  private readonly _id:IdType
+  private readonly _id: IdType
 
-  constructor(id:IdType) {
+  constructor(id: IdType) {
     super()
     this._id = id
   }
 
-  get id():IdType {
+  get id(): IdType {
     return this._id
   }
 }
 
 abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends IdentifiedVar implements Iterable<S> {
 
-  readonly secret:boolean
-  private readonly slots:readonly S[] = []
-  private readonly construct:(id:string,slots:readonly S[],secret:boolean) => this
+  readonly secret: boolean
+  private readonly slots: readonly S[] = []
+  private readonly construct:(id: string,slots: readonly S[],secret: boolean) => this
   
-  constructor(id:string, construct:(id:string,slots:readonly S[],secret:boolean) => any, slots:readonly S[],
-              secret:boolean) {
+  constructor(id: string, construct:(id: string,slots: readonly S[],secret: boolean) => any, slots: readonly S[],
+              secret: boolean) {
     super(id)
     this.slots = slots
     this.secret = secret
     this.construct = construct
   }
 
-  serialize():any {
+  serialize(): any {
     return { ...super.serialize(), slots: this.slots.map(s => s.serialize()), secret: this.secret }
   }
 
-  first():S {
+  first(): S {
     assert(this.slots, "No first of empty slot")
     return this.slots[0]
   }
   
-  add(slots:S[]):this {
+  add(slots: S[]): this {
     return this.construct(this.id, this.slots.concat(slots), this.secret)
   }
 
-  slot(id:number):S {
+  slot(id: number): S {
     const slot = this.slots.find(s => s.isId(id, this.id))
     assert(slot, "No slot of id", id)
     return slot
   }
   
-  clear():this {
+  clear(): this {
     return this.construct(this.id, [], this.secret)
   }
   
-  isEmpty():boolean {
+  isEmpty(): boolean {
     return this.slots.every(s => s.isEmpty())
   }
   
-  hasSlot(id:number, idCnt:string):boolean {
+  hasSlot(id: number, idCnt: string): boolean {
     return this.isId(idCnt) && this.slots.some(s => s.isId(id, idCnt))
   }
   
-  lengthSlots():number {
+  lengthSlots(): number {
     return this.slots.length
   }
   
-  length():number {
+  length(): number {
     return this.slots.reduce((a, s) => a + s.length(), 0)
   }
   
-  map(f: (c: T) => T):UpdateSlot<S>[] {
+  map(f: (c: T) => T): UpdateSlot<S>[] {
     return this.slots.map(s => [s, s.map(f)])
   }
 
-  update(update:UpdateSlot<S>):this {
+  update(update: UpdateSlot<S>): this {
     const [slot, slot_] = update
 
     if (this.isId(slot_.idCnt)) {
@@ -131,56 +131,56 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
     }
   }
 
-  allItems():T[] {
+  allItems(): T[] {
     return this.slots.reduce((agg, s) => agg.concat(Array.from(s)), [] as T[])
   }
   
-  [Symbol.iterator]():Iterator<S> {
+  [Symbol.iterator](): Iterator<S> {
     return this.slots[Symbol.iterator]()
   }
 }
 
 // Note: id is only unique within a container
 export abstract class Slot implements Identified {
-  readonly id:number
-  readonly idCnt:string
+  readonly id: number
+  readonly idCnt: string
 
-  static sort(lhs:Slot, rhs:Slot) {
+  static sort(lhs: Slot, rhs: Slot) {
     return lhs.idCnt.localeCompare(rhs.idCnt) || lhs.id - rhs.id
   }
   
-  constructor(id:number, idCnt:string) {
+  constructor(id: number, idCnt: string) {
     this.id = id
     this.idCnt = idCnt
   }
   
-  abstract isEmpty():boolean
-  abstract length():number
+  abstract isEmpty(): boolean
+  abstract length(): number
 
-  is(rhs:Slot) {
+  is(rhs: Slot) {
     return this.isId(rhs.id, rhs.idCnt)
   }
 
-  isId(id:number, idCnt:string) {
+  isId(id: number, idCnt: string) {
     return this.id == id && this.idCnt == idCnt
   }
   
-  serialize():any {
+  serialize(): any {
     return { id: this.id, idCnt: this.idCnt }
   }
 }
 
 // An Item held by a Slot
 export interface ItemSlot extends Identified {
-  serialize():any
+  serialize(): any
 }
 
 // A Slot that holds Items
 abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> {
-  protected readonly items:readonly T[]
-  private readonly construct:(a:number, b:string, c:readonly T[]) => this
+  protected readonly items: readonly T[]
+  private readonly construct:(a: number, b: string, c: readonly T[]) => this
 
-  constructor(id:number, construct:(a:number, b:string, c:readonly T[]) => any, idCnt:string, items:readonly T[]) {
+  constructor(id: number, construct:(a: number, b: string, c: readonly T[]) => any, idCnt: string, items: readonly T[]) {
     super(id, idCnt)
     this.items = items
     this.construct = construct
@@ -190,11 +190,11 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
     return { ...super.serialize(), items: this.items.map(c => c.serialize()), idCnt: this.idCnt }
   }
   
-  addSorted(items:T[], compareFn:(a:T, b:T) => number):this {
+  addSorted(items: T[], compareFn:(a: T, b: T) => number): this {
     return this.construct(this.id, this.idCnt, this.items.concat(items).sort(compareFn))
   }
   
-  add(items:T[], before?:T):this {
+  add(items: T[], before?: T): this {
     const idx = (() => {
       if (before) {
         const result = this.items.findIndex(i => i.is(before))
@@ -210,7 +210,7 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
     return this.construct(this.id, this.idCnt, this.items.slice(0, idx).concat(items).concat(this.items.slice(idx)))
   }
 
-  remove(items:T[]):this {
+  remove(items: T[]): this {
     if (items.length) {
       assertf(() => items.every(i => this.items.some(i2 => i2.is(i))), "Some items to be removed not found in slot")
       return this.construct(this.id, this.idCnt, this.items.filter(i => !items.some(i2 => i2.is(i))))
@@ -219,80 +219,80 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
     }
   }
 
-  replace(item:T, item_:T):this {
+  replace(item: T, item_: T): this {
     const idx = this.items.findIndex(i => i.is(item))
     assertf(() => idx != -1, "Item to be replaced not found in slot")
     return this.construct(this.id, this.idCnt, this.items.slice(0, idx).concat([item_]).concat(this.items.slice(idx+1)))
   }
 
-  top():T {
+  top(): T {
     assertf(() => !this.isEmpty())
     return this.items[this.items.length-1]
   }
 
-  isEmpty():boolean {
+  isEmpty(): boolean {
     return this.items.length == 0
   }
 
-  item(idx:number):T {
+  item(idx: number): T {
     assertf(() => idx >= 0 && idx < this.items.length)
     return this.items[idx]
   }
 
-  length():number {
+  length(): number {
     return this.items.length
   }
 
-  hasItem(item:T):boolean {
+  hasItem(item: T): boolean {
     return this.items.some(i => i.is(item))
   }
 
-  map(f: (c: T) => T):this {
+  map(f: (c: T) => T): this {
     return this.construct(this.id, this.idCnt, this.items.map(f))
   }
   
-  [Symbol.iterator]():Iterator<T> {
+  [Symbol.iterator](): Iterator<T> {
     return this.items[Symbol.iterator]()
   }
 }
 
 export class SlotCard extends SlotItem<WorldCard> {
-  constructor(id:number, idCnt:string, cards:readonly WorldCard[] = []) {
+  constructor(id: number, idCnt: string, cards: readonly WorldCard[] = []) {
     super(id, (id,idCnt,cards) => new SlotCard(id, idCnt, cards), idCnt, cards)
   }
 
-  static fromSerialized(serialized:any) {
-    return new SlotCard(serialized.id, serialized.idCnt, serialized.items.map((c:any) => WorldCard.fromSerialized(c)))
+  static fromSerialized(serialized: any) {
+    return new SlotCard(serialized.id, serialized.idCnt, serialized.items.map((c: any) => WorldCard.fromSerialized(c)))
   }
 
-  container(playfield:Playfield):ContainerSlotCard {
+  container(playfield: Playfield): ContainerSlotCard {
     return playfield.container(this.idCnt)
   }
 
-  findById(id:string):WorldCard|undefined {
+  findById(id: string): WorldCard|undefined {
     return this.items.find(i => i.isId(id))
   }
 }
 
 export class ContainerSlotCard extends ContainerSlot<SlotCard, WorldCard> {
-  constructor(id:string, slots:readonly SlotCard[]=[], secret=false) {
+  constructor(id: string, slots: readonly SlotCard[]=[], secret=false) {
     super(id, (id,slots,secret) => new ContainerSlotCard(id,slots,secret), slots, secret)
   }
   
-  static fromSerialized(s:any) {
-    return new ContainerSlotCard(s.id, s.slots.map((c:any) => SlotCard.fromSerialized(c)), s.secret)
+  static fromSerialized(s: any) {
+    return new ContainerSlotCard(s.id, s.slots.map((c: any) => SlotCard.fromSerialized(c)), s.secret)
   }
 }
 
 export class Player extends IdentifiedVar {
-  readonly idCnts:string[]
+  readonly idCnts: string[]
   
-  constructor(id:string, idCnts:string[]) {
+  constructor(id: string, idCnts: string[]) {
     super(id)
     this.idCnts = idCnts
   }
 
-  multipleAssignmentPossible():boolean { return false }
+  multipleAssignmentPossible(): boolean { return false }
 }
 
 export class PlayerSpectator extends Player {
@@ -300,7 +300,7 @@ export class PlayerSpectator extends Player {
     super("spectator", [])
   }
 
-  multipleAssignmentPossible():boolean { return true }
+  multipleAssignmentPossible(): boolean { return true }
 }
 
 enum Suit {
@@ -316,31 +316,31 @@ enum Color {
 }
 
 export class Card extends IdentifiedVar {
-  readonly suit:number
-  readonly rank:number
+  readonly suit: number
+  readonly rank: number
     
-  constructor(rank:number, suit:number, id:string) {
+  constructor(rank: number, suit: number, id: string) {
     super(id)
     this.suit = suit
     this.rank = rank
   }
 
-  static fromSerialized(serialized:any) {
+  static fromSerialized(serialized: any) {
     return new Card(serialized.rank, serialized.suit, serialized.id)
   }
 
-  color():Color {
+  color(): Color {
     if (this.suit == Suit.CLUB || this.suit == Suit.SPADE)
       return Color.BLACK
     else
       return Color.RED
   }
 
-  rankValue(aceHigh:boolean):number {
+  rankValue(aceHigh: boolean): number {
     return this.rank == 0 && aceHigh ? 13 : this.rank
   }
   
-  serialize():any {
+  serialize(): any {
     return {
       ...super.serialize(),
       suit: this.suit,
@@ -350,12 +350,12 @@ export class Card extends IdentifiedVar {
 }
 
 export class WorldCard extends IdentifiedVar<string> {
-  readonly card:Card
-  readonly faceUp:boolean
-  readonly faceUpIsConscious:boolean
-  readonly turned:boolean
+  readonly card: Card
+  readonly faceUp: boolean
+  readonly faceUpIsConscious: boolean
+  readonly turned: boolean
 
-  constructor(card:Card, faceUp:boolean, faceUpIsConscious=false, turned=false, id=card.id) {
+  constructor(card: Card, faceUp: boolean, faceUpIsConscious=false, turned=false, id=card.id) {
     super(id)
     this.card = card
     this.faceUp = faceUp
@@ -363,31 +363,31 @@ export class WorldCard extends IdentifiedVar<string> {
     this.turned = turned
   }
 
-  static fromSerialized(serialized:any) {
+  static fromSerialized(serialized: any) {
     return new WorldCard(Card.fromSerialized(serialized.card), serialized.faceUp, serialized.faceUpIsConscious,
                         serialized.turned)
   }
 
-  equals(rhs:WorldCard):boolean {
+  equals(rhs: WorldCard): boolean {
     return this.card.is(rhs.card) &&
       this.faceUp == rhs.faceUp &&
       this.faceUpIsConscious == rhs.faceUpIsConscious &&
       this.turned == rhs.turned
   }
 
-  withFaceUp(faceUp:boolean) {
+  withFaceUp(faceUp: boolean) {
     return new WorldCard(this.card, faceUp, this.faceUpIsConscious, this.turned)
   }
 
-  withFaceStateConscious(faceUp:boolean, conscious:boolean) {
+  withFaceStateConscious(faceUp: boolean, conscious: boolean) {
     return new WorldCard(this.card, faceUp, conscious, this.turned)
   }
   
-  withTurned(turned:boolean) {
+  withTurned(turned: boolean) {
     return new WorldCard(this.card, this.faceUp, this.faceUpIsConscious, turned)
   }
   
-  serialize():any {
+  serialize(): any {
     return {
       card: this.card.serialize(),
       faceUp: this.faceUp,
@@ -398,7 +398,7 @@ export class WorldCard extends IdentifiedVar<string> {
 }
 
 function deck52() {
-  const result:Card[] = []
+  const result: Card[] = []
   
   for (let suit = 0; suit < 4; ++suit) {
     for (let rank = 0; rank < 13; ++rank) {
@@ -413,8 +413,8 @@ function deck51NoDeuce() {
   return deck52().filter(c => c.suit != Suit.SPADE && c.rank != 1)
 }
 
-function shuffled(deck:Card[]):Card[] {
-  const result:Card[] = []
+function shuffled(deck: Card[]): Card[] {
+  const result: Card[] = []
   
   while (deck.length) {
     const idx = Math.floor(Math.random() * deck.length)
@@ -425,7 +425,7 @@ function shuffled(deck:Card[]):Card[] {
   return result
 }
 
-function orderColorAlternate(c:Card):number {
+function orderColorAlternate(c: Card): number {
   switch (c.suit) {
     case Suit.CLUB: return 0; break;
     case Suit.DIAMOND: return 1; break;
@@ -435,21 +435,21 @@ function orderColorAlternate(c:Card):number {
   }
 }
 
-function orderColorAlternateRank(aceHigh:boolean, a:Card, b:Card):number {
+function orderColorAlternateRank(aceHigh: boolean, a: Card, b: Card): number {
   return orderColorAlternate(a) - orderColorAlternate(b) || a.rankValue(aceHigh) - b.rankValue(aceHigh)
 }
 
-function orderColorAlternateRankW(aceHigh:boolean, a:WorldCard, b:WorldCard):number {
+function orderColorAlternateRankW(aceHigh: boolean, a: WorldCard, b: WorldCard): number {
   return orderColorAlternateRank(aceHigh, a.card, b.card)
 }
 
 export class EventSlotChange extends Event {
-  readonly playfield:Playfield
-  readonly playfield_:Playfield
-  readonly idCnt:string
-  readonly idSlot:number
+  readonly playfield: Playfield
+  readonly playfield_: Playfield
+  readonly idCnt: string
+  readonly idSlot: number
   
-  constructor(playfield:Playfield, playfield_:Playfield, idCnt:string, idSlot:number) {
+  constructor(playfield: Playfield, playfield_: Playfield, idCnt: string, idSlot: number) {
     super('slotchange')
     this.playfield = playfield
     this.playfield_ = playfield_
@@ -459,12 +459,12 @@ export class EventSlotChange extends Event {
 }
 
 export class EventContainerChange<S extends Slot> extends Event {
-  readonly playfield:Playfield
-  readonly playfield_:Playfield
-  readonly updates:UpdateSlot<S>[]
-  readonly idCnt:string
+  readonly playfield: Playfield
+  readonly playfield_: Playfield
+  readonly updates: UpdateSlot<S>[]
+  readonly idCnt: string
   
-  constructor(playfield:Playfield, playfield_:Playfield, idCnt:string, updates:UpdateSlot<S>[]) {
+  constructor(playfield: Playfield, playfield_: Playfield, idCnt: string, updates: UpdateSlot<S>[]) {
     super('containerchange')
     this.playfield = playfield
     this.playfield_ = playfield_
@@ -474,28 +474,28 @@ export class EventContainerChange<S extends Slot> extends Event {
 }
 
 export class EventPingBack extends Event {
-  readonly secs:number
+  readonly secs: number
   
-  constructor(secs:number) {
+  constructor(secs: number) {
     super('pingback')
     this.secs = secs
   }
 }
 
 export class EventPeerUpdate extends Event {
-  readonly peers:PeerPlayer[]
+  readonly peers: PeerPlayer[]
   
-  constructor(peers:PeerPlayer[]) {
+  constructor(peers: PeerPlayer[]) {
     super('peerupdate')
     this.peers = peers
   }
 }
 
 export class EventPlayfieldChange extends Event {
-  readonly playfield:Playfield
-  readonly playfield_:Playfield
+  readonly playfield: Playfield
+  readonly playfield_: Playfield
 
-  constructor(playfield:Playfield, playfield_:Playfield) {
+  constructor(playfield: Playfield, playfield_: Playfield) {
     super('playfieldchange')
     this.playfield = playfield
     this.playfield_ = playfield_
@@ -510,7 +510,7 @@ export interface EventMapNotifierSlot<S extends Slot> {
 
 interface EventTargetNotifierSlot {
   addEventListener<S extends Slot, K extends keyof EventMapNotifierSlot<S>>(type: K, listener: (ev: EventMapNotifierSlot<S>[K]) => any): void
-  dispatchEvent(event:Event):boolean
+  dispatchEvent(event: Event): boolean
 }
 
 function newEventTarget() {
@@ -518,19 +518,19 @@ function newEventTarget() {
   return document.createElement('div') as EventTargetNotifierSlot
 }
 
-type FuncSlotUpdatePre<S extends Slot> = (move:CardsMove, updates:UpdateSlot<S>[],
-                                          localAction:boolean) => any
-type FuncSlotUpdatePost = (move:CardsMove, updates:UpdateSlot<Slot>[], result:any, localAction:boolean) => void
+type FuncSlotUpdatePre<S extends Slot> = (move: CardsMove, updates: UpdateSlot<S>[],
+                                          localAction: boolean) => any
+type FuncSlotUpdatePost = (move: CardsMove, updates: UpdateSlot<Slot>[], result: any, localAction: boolean) => void
 type ResultPreSlotUpdate = any
 
 export class NotifierSlot {
-  readonly playfield:EventTargetNotifierSlot = newEventTarget()
-  private readonly events:Map<string, EventTargetNotifierSlot> = new Map()
-  private readonly slotUpdates:FuncSlotUpdatePre<SlotCard>[] = []
-  private readonly slotUpdatesChip:FuncSlotUpdatePre<SlotChip>[] = []
-  private readonly postSlotUpdates:FuncSlotUpdatePost[] = []
+  readonly playfield: EventTargetNotifierSlot = newEventTarget()
+  private readonly events: Map<string, EventTargetNotifierSlot> = new Map()
+  private readonly slotUpdates: FuncSlotUpdatePre<SlotCard>[] = []
+  private readonly slotUpdatesChip: FuncSlotUpdatePre<SlotChip>[] = []
+  private readonly postSlotUpdates: FuncSlotUpdatePost[] = []
 
-  container(idCnt:string) {
+  container(idCnt: string) {
     let result = this.events.get(idCnt)
     if (!result) {
       result = newEventTarget()
@@ -539,7 +539,7 @@ export class NotifierSlot {
     return result
   }
 
-  slot(idCnt:string, idSlot:number) {
+  slot(idCnt: string, idSlot: number) {
     const key = idCnt + "-" + idSlot
     let result = this.events.get(key)
     if (!result) {
@@ -561,23 +561,23 @@ export class NotifierSlot {
     this.postSlotUpdates.push(func)
   }
 
-  slotsUpdateCard(playfield:Playfield, playfield_:Playfield, move:CardsMove, updates:UpdateSlot<SlotCard>[],
-                  localAction=true):Playfield {
+  slotsUpdateCard(playfield: Playfield, playfield_: Playfield, move: CardsMove, updates: UpdateSlot<SlotCard>[],
+                  localAction=true): Playfield {
     return this.slotsUpdate(playfield, playfield_, move, updates, localAction,
                             this.slotUpdates.map(f => f(move, updates, localAction)))
   }
   
-  slotsUpdateChip(playfield:Playfield, playfield_:Playfield, updates:UpdateSlot<SlotChip>[],
-                  localAction=true):Playfield {
+  slotsUpdateChip(playfield: Playfield, playfield_: Playfield, updates: UpdateSlot<SlotChip>[],
+                  localAction=true): Playfield {
     return this.slotsUpdate(playfield, playfield_, new CardsMove([], , updates, localAction,
                             this.slotUpdatesChip.map(f => f([], updates, localAction)))
   }
   
   private slotsUpdate<S extends Slot>(
-    playfield:Playfield, playfield_:Playfield, move:CardsMove, updates:UpdateSlot<S>[], localAction:boolean,
-    preSlotChangeInfo:ResultPreSlotUpdate
-  ):Playfield {
-    const cntChanged:Map<string, UpdateSlot<S>[]> = new Map()
+    playfield: Playfield, playfield_: Playfield, move: CardsMove, updates: UpdateSlot<S>[], localAction: boolean,
+    preSlotChangeInfo: ResultPreSlotUpdate
+  ): Playfield {
+    const cntChanged: Map<string, UpdateSlot<S>[]> = new Map()
     for (const update of updates) {
       const [slot, slot_] = update
       
@@ -608,9 +608,9 @@ export class NotifierSlot {
 }
 
 export class Chip extends IdentifiedVar<number> {
-  readonly value:number
+  readonly value: number
   
-  constructor(id:number, value:number) {
+  constructor(id: number, value: number) {
     super(id)
     this.value = value
   }
@@ -619,43 +619,43 @@ export class Chip extends IdentifiedVar<number> {
     return {...super.serialize(), value: this.value }
   }
   
-  static fromSerialized(s:any) {
+  static fromSerialized(s: any) {
     return new Chip(s.id, s.value)
   }
 }
 
 export class SlotChip extends SlotItem<Chip> {
-  constructor(id:number, idCnt:string, chips:readonly Chip[] = []) {
-    super(id, (id:number,idCnt:string,chips:readonly Chip[]) => new SlotChip(id, idCnt, chips), idCnt, chips)
+  constructor(id: number, idCnt: string, chips: readonly Chip[] = []) {
+    super(id, (id: number,idCnt: string,chips: readonly Chip[]) => new SlotChip(id, idCnt, chips), idCnt, chips)
   }
 
-  static fromSerialized(serialized:any):SlotChip {
-    return new SlotChip(serialized.id, serialized.idCnt, serialized.items.map((c:any) => Chip.fromSerialized(c)))
+  static fromSerialized(serialized: any): SlotChip {
+    return new SlotChip(serialized.id, serialized.idCnt, serialized.items.map((c: any) => Chip.fromSerialized(c)))
   }
 
-  container(playfield:Playfield):ContainerSlotChip {
+  container(playfield: Playfield): ContainerSlotChip {
     return playfield.containerChip(this.idCnt)
   }
 }
 
 class ContainerSlotChip extends ContainerSlot<SlotChip, Chip> {
-  constructor(id:string, slots:readonly SlotChip[]=[], secret=false) {
+  constructor(id: string, slots: readonly SlotChip[]=[], secret=false) {
     super(id,
-          (id:string,slots:readonly SlotChip[],secret=false) => new ContainerSlotChip(id,slots,secret),
+          (id: string,slots: readonly SlotChip[],secret=false) => new ContainerSlotChip(id,slots,secret),
           slots,
           secret)
   }
   
-  static fromSerialized(s:any) {
-    return new ContainerSlotChip(s.id, s.slots.map((c:any) => SlotChip.fromSerialized(c)), s.secret)
+  static fromSerialized(s: any) {
+    return new ContainerSlotChip(s.id, s.slots.map((c: any) => SlotChip.fromSerialized(c)), s.secret)
   }
 }
 
 export class MoveItems<S extends Slot, T extends ItemSlot> {
   constructor(
-    readonly slotItems:readonly [S,T[]],
-    readonly slotDest:SlotCard,
-    readonly before?:WorldCard
+    readonly slotItems: readonly [S,T[]],
+    readonly slotDest: SlotCard,
+    readonly before?: WorldCard
   ) {}
 
   serialize() {
@@ -668,13 +668,13 @@ export class MoveItems<S extends Slot, T extends ItemSlot> {
 }
 
 export class MoveCards extends MoveItems<SlotCard, WorldCard> {
-  constructor(slotItems:readonly [SlotCard,WorldCard[]], slotDest:SlotCard, before?:WorldCard) {
+  constructor(slotItems: readonly [SlotCard,WorldCard[]], slotDest: SlotCard, before?: WorldCard) {
     super(slotItems, slotDest, before)
   }
     
-  static fromSerialized(playfield:Playfield, s:any) {
+  static fromSerialized(playfield: Playfield, s: any) {
     return new MoveCards(
-      s.cards.map((e:any) => [WorldCard.fromSerialized(e[0]), playfield.container(e[1]).slot(e[2])]),
+      s.cards.map((e: any) => [WorldCard.fromSerialized(e[0]), playfield.container(e[1]).slot(e[2])]),
       playfield.container(s.slotDest[0]).slot(s.slotDest[1]),
       WorldCard.fromSerialized(s.before)
     )
@@ -682,13 +682,13 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
 }
 
 export class MoveChips extends MoveItems<SlotCard, WorldCard> {
-  constructor(slotItems:readonly [SlotChip,Chip[]], slotDest:SlotCard, before?:WorldCard) {
+  constructor(slotItems: readonly [SlotChip,Chip[]], slotDest: SlotCard, before?: WorldCard) {
     super(slotItems, slotDest, before)
   }
     
-  static fromSerialized(playfield:Playfield, s:any) {
+  static fromSerialized(playfield: Playfield, s: any) {
     return new MoveCards(
-      s.cards.map((e:any) => [Chip.fromSerialized(e[0]), playfield.containerChip(e[1]).slot(e[2])]),
+      s.cards.map((e: any) => [Chip.fromSerialized(e[0]), playfield.containerChip(e[1]).slot(e[2])]),
       playfield.containerChip(s.slotDest[0]).slot(s.slotDest[1]),
       Chip.fromSerialized(s.before)
     )
@@ -696,23 +696,23 @@ export class MoveChips extends MoveItems<SlotCard, WorldCard> {
 }
 
 export class Playfield {
-  constructor(readonly containers:readonly ContainerSlotCard[],
-              readonly containersChip:readonly ContainerSlotChip[]) {
+  constructor(readonly containers: readonly ContainerSlotCard[],
+              readonly containersChip: readonly ContainerSlotChip[]) {
   }
 
-  static fromSerialized(serialized:any):Playfield {
+  static fromSerialized(serialized: any): Playfield {
     return new Playfield(
-      serialized.containers.map((s:any) => ContainerSlotCard.fromSerialized(s)),
-      serialized.containersChip.map((s:any) => ContainerSlotChip.fromSerialized(s))
+      serialized.containers.map((s: any) => ContainerSlotCard.fromSerialized(s)),
+      serialized.containersChip.map((s: any) => ContainerSlotChip.fromSerialized(s))
     )
   }
   
-  serialize():any {
+  serialize(): any {
     return { containers: this.containers.map(s => s.serialize()),
              containersChip: this.containersChip.map(s => s.serialize()) }
   }
 
-  withCardsMove(move:CardsMove):[Playfield,UpdateSlot<SlotCard>[]] {
+  withCardsMove(move: CardsMove):[Playfield,UpdateSlot<SlotCard>[]] {
     const updates = [] as UpdateSlot<SlotCard>[]
     for (const [slot, moves] of array.group_by(move.cards, ([card, slot]) => slot, Slot.sort)) {
       const cards = moves.map(([card, slot]) => card)
@@ -727,19 +727,19 @@ export class Playfield {
     return [this.withUpdateCard(updates), updates]
   }
   
-  container(id:string):ContainerSlotCard {
+  container(id: string): ContainerSlotCard {
     const cnt = this.containers.find(c => c.isId(id))
     assertf(() => cnt)
     return cnt!
   }
 
-  containerChip(id:string):ContainerSlotChip {
+  containerChip(id: string): ContainerSlotChip {
     const cnt = this.containersChip.find(c => c.isId(id))
     assertf(() => cnt)
     return cnt!
   }
 
-  withUpdateCard(updates:UpdateSlot<SlotCard>[]):Playfield {
+  withUpdateCard(updates: UpdateSlot<SlotCard>[]): Playfield {
     assertf(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     return new Playfield(
@@ -748,7 +748,7 @@ export class Playfield {
     )
   }
   
-  withUpdateChip(updates:UpdateSlot<SlotChip>[]):Playfield {
+  withUpdateChip(updates: UpdateSlot<SlotChip>[]): Playfield {
     assertf(() => updates.every(([slot, slot_]) => (slot == undefined || slot.idCnt == slot_.idCnt)))
     
     return new Playfield(
@@ -757,17 +757,17 @@ export class Playfield {
     )
   }
 
-  validateConsistencyCard(updates:UpdateSlot<SlotCard>[]):string[] {
+  validateConsistencyCard(updates: UpdateSlot<SlotCard>[]): string[] {
     return this.validateConsistency(this.containers, updates)
   }
 
-  validateConsistencyChip(updates:UpdateSlot<SlotChip>[]):string[] {
+  validateConsistencyChip(updates: UpdateSlot<SlotChip>[]): string[] {
     return this.validateConsistency(this.containersChip, updates)
   }
   
   private validateConsistency<S extends SlotItem<T>, T extends ItemSlot>(
-    containers:readonly ContainerSlot<S, T>[],
-    updates:UpdateSlot<SlotItem<T>>[]):string[] {
+    containers: readonly ContainerSlot<S, T>[],
+    updates: UpdateSlot<SlotItem<T>>[]): string[] {
     
     const result = []
     for (const [slot, slot_] of updates) {
@@ -791,18 +791,18 @@ export class Playfield {
   }
 }
 
-declare var Peer:any
+declare var Peer: any
 
 export class PeerPlayer extends IdentifiedVar {
-  private conn?:any
-  private err?:any
-  private player:Player
+  private conn?: any
+  private err?: any
+  private player: Player
   private connecting = true
   consistency = 0
   consistencyReported = 0
 
-  constructor(id:string, private readonly conns:Connections, player:Player,
-              readonly onReconnect:(p:PeerPlayer) => void) {
+  constructor(id: string, private readonly conns: Connections, player: Player,
+              readonly onReconnect:(p: PeerPlayer) => void) {
     super(id)
     this.conns = conns
     this.player = player
@@ -835,7 +835,7 @@ export class PeerPlayer extends IdentifiedVar {
 
   connectingGet() { return this.connecting }
   
-  onOpened(conn:any) {
+  onOpened(conn: any) {
     const firstConnection = this.conn === undefined
     this.conn = conn
     this.connecting = false
@@ -845,32 +845,32 @@ export class PeerPlayer extends IdentifiedVar {
       this.keepConnected()
   }
 
-  onOpenFailed(err:any) {
+  onOpenFailed(err: any) {
     this.connecting = false
     this.err = err
   }
   
-  open():boolean {
+  open(): boolean {
     return this.conn?.open
   }
 
-  status():string {
+  status(): string {
     return this.err ? 'Error' :
       this.connectingGet() ? 'Connecting...' :
       this.open() ? 'Connected' :
       'Disconnected'
   }
 
-  playerGet():Player { return this.player }
-  playerChange(player:Player):void { this.player = player }
+  playerGet(): Player { return this.player }
+  playerChange(player: Player): void { this.player = player }
   
-  send(data:any) {
+  send(data: any) {
     assert(this.open())
     console.debug('Send to ' + this.id, data)
     this.conn.send(data)
   }
 
-  serialize():any {
+  serialize(): any {
     return { ...super.serialize(), player: this.player.id }
   }
 }
@@ -881,26 +881,26 @@ interface EventMapConnections {
 
 interface EventTargetConnections {
   addEventListener<K extends keyof EventMapConnections>(type: K, listener: (ev: EventMapConnections[K]) => any): void
-  dispatchEvent(event:EventPeerUpdate):void
+  dispatchEvent(event: EventPeerUpdate): void
 }
 
 export class Connections {
-  readonly events:EventTargetConnections = document.createElement("div") as EventTargetConnections
-  private registrant:any
-  private registering:boolean = false
-  private peers:Map<string, PeerPlayer> = new Map()
+  readonly events: EventTargetConnections = document.createElement("div") as EventTargetConnections
+  private registrant: any
+  private registering: boolean = false
+  private peers: Map<string, PeerPlayer> = new Map()
 
-  constructor(private readonly onReconnect:(peer:PeerPlayer) => void) {
+  constructor(private readonly onReconnect:(peer: PeerPlayer) => void) {
   }
   
-  registrantId():string|undefined {
+  registrantId(): string|undefined {
     return this.registrant?.id
   }
   
-  register(id:string,
-           onPeerConnect:(metadata:any, peer:PeerPlayer) => void,
-           onReceive:(data:any, peer:PeerPlayer) => void,
-           playerDefault:Player,
+  register(id: string,
+           onPeerConnect:(metadata: any, peer: PeerPlayer) => void,
+           onReceive:(data: any, peer: PeerPlayer) => void,
+           playerDefault: Player,
            registrantPlayerGet:() => Player,
            maxPlayersGet:() => number
           ) {
@@ -932,7 +932,7 @@ export class Connections {
       host ? {host: host.split(':')[0], port: host.split(':')[1] ?? 9000, path: path ?? '/'} : undefined
     const registrant = new Peer(id, connection)
 
-    registrant.on('error', (err:any) => {
+    registrant.on('error', (err: any) => {
       this.registering = false
       if (err.type != 'peer-unavailable') {
         throw new Error(`${err.type} ${err}`)
@@ -949,19 +949,19 @@ export class Connections {
     
     console.log("Registering as " + id)
 
-    registrant.on('close', (id:any) => {
+    registrant.on('close', (id: any) => {
       dom.demandById("peerjs-status").innerHTML = "Unregistered"
       this.registrant = null
     })
     
-    registrant.on('open', (id:any) => {
+    registrant.on('open', (id: any) => {
       this.registering = false
       this.registrant = registrant
       
       dom.demandById("peerjs-status").innerHTML = "Registered"
     })
 
-    registrant.on('connection', (conn:any) => {
+    registrant.on('connection', (conn: any) => {
       console.log("Peer connected to us", conn)
 
       {
@@ -971,13 +971,13 @@ export class Connections {
           this.connect(
             conn.peer,
             playerDefault,
-            (peer:PeerPlayer, _:any) => onPeerConnect(conn.metadata, peer),
+            (peer: PeerPlayer, _: any) => onPeerConnect(conn.metadata, peer),
             {}
           )
         }
       }
 
-      conn.on('data', (data:any) => {
+      conn.on('data', (data: any) => {
         const peer = this.peerById(conn.peer)
 
         console.debug('Received from ' + conn.peer + ' in state open=' + peer?.open(), data)
@@ -985,26 +985,26 @@ export class Connections {
         peer && peer.open() && onReceive(data, peer)
       })
       
-      conn.on('error', (e:any) => {
+      conn.on('error', (e: any) => {
         const peer = this.peerById(conn.peer)
         peer && this.onPeerError(peer, e)
       })
     })
   }
 
-  peerById(id:string):PeerPlayer|undefined {
+  peerById(id: string): PeerPlayer|undefined {
     return this.peers.get(id)
   }
 
-  peerByPlayer(player:Player):PeerPlayer|undefined {
+  peerByPlayer(player: Player): PeerPlayer|undefined {
     return Array.from(this.peers.values()).find((p) => p.playerGet() === player)
   }
   
-  connectYom(idPeer:string, playerForPeer:Player) {
+  connectYom(idPeer: string, playerForPeer: Player) {
     this.connect(idPeer, playerForPeer, () => {}, 'yom')
   }
 
-  connect(idPeer:string, playerDefault:Player, onConnect:(peer:PeerPlayer, conn:any) => void, metadata:any) {
+  connect(idPeer: string, playerDefault: Player, onConnect:(peer: PeerPlayer, conn: any) => void, metadata: any) {
     
     assertf(() => idPeer)
     
@@ -1043,7 +1043,7 @@ export class Connections {
           
           this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
           
-          function ping(secs:any) {
+          function ping(secs: any) {
             assert(peerPlayer)
             if (peerPlayer.open()) {
               peerPlayer.send({ping: {secs: secs}})
@@ -1052,7 +1052,7 @@ export class Connections {
           }
           ping(0)
           
-          conn.on('error', (err:any) => {
+          conn.on('error', (err: any) => {
             assert(peerPlayer)
             peerPlayer.onOpenFailed(err)
             this.onPeerError(peerPlayer, err)
@@ -1064,24 +1064,24 @@ export class Connections {
     }
   }
 
-  broadcast(data:any, exclusions:PeerPlayer[] = []) {
+  broadcast(data: any, exclusions: PeerPlayer[] = []) {
     for (const [id,peer] of this.peers) {
       if (peer.open() && !exclusions.some(p => p.is(peer)))
         peer.send(data)
     }
   }
 
-  onPeerError(peer:PeerPlayer, error:any) {
+  onPeerError(peer: PeerPlayer, error: any) {
     console.log('Peer connection error', peer.id, error)
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 
-  onPeerLost(peer:PeerPlayer) {
+  onPeerLost(peer: PeerPlayer) {
     this.peers.delete(peer.id)
     this.events.dispatchEvent(new EventPeerUpdate(Array.from(this.peers.values())))
   }
 
-  onPeerUpdate(registrantPlayer:Player) {
+  onPeerUpdate(registrantPlayer: Player) {
     const peers = this.peersGet().map((p) => p.serialize())
     this.broadcast({
       peerUpdate: {
@@ -1095,16 +1095,16 @@ export class Connections {
 }
 
 export abstract class Game extends IdentifiedVar {
-  readonly players:Player[]
+  readonly players: Player[]
 
-  constructor(id:string, readonly description:string, readonly makeUi:(...args:any) => void, players:Player[]) {
+  constructor(id: string, readonly description: string, readonly makeUi:(...args: any) => void, players: Player[]) {
     super(id)
     this.description = description
     this.makeUi = makeUi
     this.players = players.concat([new PlayerSpectator()])
   }
   
-  abstract playfield(players:number):Playfield
+  abstract playfield(players: number): Playfield
 
   decks():[string, Card[]][] {
     return [
@@ -1113,23 +1113,23 @@ export abstract class Game extends IdentifiedVar {
     ]
   }
   
-  *deal(players:number, playfield:Playfield):Generator<[Playfield, UpdateSlot<SlotCard>[]], void> {
+  *deal(players: number, playfield: Playfield): Generator<[Playfield, UpdateSlot<SlotCard>[]], void> {
   }
   
-  playfieldNewHand(players:number, playfieldOld:Playfield):Playfield {
+  playfieldNewHand(players: number, playfieldOld: Playfield): Playfield {
     const pf = this.playfield(players)
     return new Playfield(pf.containers, playfieldOld.containersChip)
   }
 
-  playersActive():Player[] {
+  playersActive(): Player[] {
     return this.players.filter(p => p.idCnts.length != 0)
   }
 
-  spectator():Player {
+  spectator(): Player {
     return this.players[this.players.length-1]
   }
   
-  protected *dealEach(players:number, playfield:Playfield, cnt:number, ordering:(a:WorldCard, b:WorldCard) => number) {
+  protected *dealEach(players: number, playfield: Playfield, cnt: number, ordering:(a: WorldCard, b: WorldCard) => number) {
     for (let i = 0; i < cnt; ++i)
       for (const p of this.playersActive().slice(0, players)) {
         const slotSrc = playfield.container('stock').slot(0)
@@ -1137,7 +1137,7 @@ export abstract class Game extends IdentifiedVar {
         const slotDst = playfield.container(p.idCnts[0]).slot(0)
         const slotDst_ = slotDst.addSorted([slotSrc.top().withFaceUp(true)], ordering)
         
-        const updates:UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
+        const updates: UpdateSlot<SlotCard>[] = [[slotSrc, slotSrc_], [slotDst, slotDst_]]
         playfield = playfield.withUpdateCard(updates)
         yield [playfield, updates] as [Playfield, UpdateSlot<SlotCard>[]]
       }
@@ -1145,16 +1145,16 @@ export abstract class Game extends IdentifiedVar {
 }
 
 export class GameGinRummy extends Game {
-  constructor(makeUi:(...args:any) => any) {
+  constructor(makeUi:(...args: any) => any) {
     super("gin-rummy", "Gin Rummy", makeUi,
           [new Player('Player 1', ['p0']), new Player('Player 2', ['p1'])])
   }
 
-  deal(players:number, playfield:Playfield) {
+  deal(players: number, playfield: Playfield) {
     return this.dealEach(players, playfield, 10, orderColorAlternateRankW.bind(null, false))
   }
   
-  playfield(players:number):Playfield {
+  playfield(players: number): Playfield {
     return new Playfield(
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
@@ -1167,16 +1167,16 @@ export class GameGinRummy extends Game {
 }
 
 export class GameDummy extends Game {
-  constructor(makeUi:(...args:any) => any) {
+  constructor(makeUi:(...args: any) => any) {
     super("dummy", "Dummy / 500 Rum", makeUi,
           [new Player('Player 1', ['p0']), new Player('Player 2', ['p1'])])
   }
   
-  deal(players:number, playfield:Playfield) {
+  deal(players: number, playfield: Playfield) {
     return this.dealEach(players, playfield, 13, orderColorAlternateRankW.bind(null, false))
   }
   
-  playfield(players:number):Playfield {
+  playfield(players: number): Playfield {
     return new Playfield(
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
@@ -1191,15 +1191,15 @@ export class GameDummy extends Game {
 }
 
 export class GamePoker extends Game {
-  constructor(makeUi:(...args:any) => any) {
+  constructor(makeUi:(...args: any) => any) {
     super("poker", "Poker", makeUi,
           array.range(8).map((_,i) => new Player('Player '+(i+1), ['p'+i, `p${i}-chip`])))
   }
   
-  playfield(players:number):Playfield {
+  playfield(players: number): Playfield {
     const deck = shuffled(deck52())
 
-    const chips = (id:string, base:number) => 
+    const chips = (id: string, base: number) => 
       [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+80+100*base, 100))),
        new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+60+100*base, 50))),
        new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+40+100*base,20))),
@@ -1222,17 +1222,17 @@ export class GamePoker extends Game {
 }
 
 export class GamePokerChinese extends Game {
-  constructor(makeUi:(...args:any) => any) {
+  constructor(makeUi:(...args: any) => any) {
     super("poker-chinese", "Chinese Poker", makeUi,
           array.range(4).map((_,i) => new Player('Player '+(i+1), ['p'+i, `p${i}-chip`])))
   }
   
-  deal(players:number, playfield:Playfield) {
+  deal(players: number, playfield: Playfield) {
     return this.dealEach(players, playfield, 13, orderColorAlternateRankW.bind(null, true))
   }
   
-  playfield(players:number):Playfield {
-    const chips = (id:string, base:number) => 
+  playfield(players: number): Playfield {
+    const chips = (id: string, base: number) => 
       [new SlotChip(0, id, array.range(3).map((_,i) => new Chip(i+80+100*base, 100))),
        new SlotChip(1, id, array.range(6).map((_,i) => new Chip(i+60+100*base, 50))),
        new SlotChip(2, id, array.range(10).map((_,i) => new Chip(i+40+100*base,20))),
@@ -1259,17 +1259,17 @@ export class GamePokerChinese extends Game {
 }
 
 export class GameHearts extends Game {
-  constructor(makeUi:(...args:any) => any) {
+  constructor(makeUi:(...args: any) => any) {
     super("hearts", "Hearts", makeUi,
           array.range(4).map((_,i) => new Player('Player '+(i+1), ['p'+i, `p${i}-trick`])))
   }
   
-  deal(players:number, playfield:Playfield) {
+  deal(players: number, playfield: Playfield) {
     const numCards = playfield.container("stock").length()
     return this.dealEach(players, playfield, numCards/players, orderColorAlternateRankW.bind(null, false))
   }
   
-  playfield(players:number):Playfield {
+  playfield(players: number): Playfield {
     const deck = shuffled(players == 3 ? deck51NoDeuce() : deck52())
 
     return new Playfield(
