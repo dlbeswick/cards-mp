@@ -1,14 +1,56 @@
 import { assert, assertf } from './assert.js'
 import * as dom from "./dom.js"
 import {
-  Connections, ContainerSlotCard, EventContainerChange, EventPeerUpdate, EventPlayfieldChange, EventSlotChange, Game,
-  GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, MoveCards, MoveChips, NotifierSlot, PeerPlayer,
-  Player, Playfield, Slot, SlotCard, SlotChip
+  Connections, ContainerSlotCard, EventContainerChange, EventMove, EventPeerUpdate, EventPlayfieldChange,
+  EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, MoveCards, MoveChips,
+  MoveItemsAny, NotifierSlot, PeerPlayer, Player, Playfield, Slot,
+  deserializeMove
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
 import { Vector } from "./math.js"
 import { Selection, UICard, UIContainer, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
+
+class Turn {
+  constructor(
+    readonly playfield: Playfield,
+    readonly sequence: number,
+    readonly moves: MoveItemsAny[]
+  ) {}
+
+  nextPlayfield(): [Playfield|undefined, string] {
+    let result = this.playfield
+    for (const move of this.moves) {
+      result = move.apply(result)
+    }
+    return [result, "Ok"]
+  }
+
+  withMove(move: MoveItemsAny) {
+    return new Turn(this.playfield, this.sequence, this.moves.concat(move))
+  }
+
+  withPlayfield(playfield: Playfield) {
+    return new Turn(playfield, this.sequence, this.moves)
+  }
+
+  serialize() {
+    return {
+      playfield: this.playfield.serialize(),
+      sequence: this.sequence,
+      moves: this.moves.map(m => m.serialize())
+    }
+  }
+
+  static fromSerialized(s: any) {
+    const pf = Playfield.fromSerialized(s.playfield)
+    return new Turn(
+      pf,
+      s.sequence,
+      s.moves.map((m: any) => deserializeMove(pf, m))
+    )
+  }
+}
 
 window.onerror = errorHandler
 
@@ -27,7 +69,6 @@ document.addEventListener("deviceready", () => {
 
   console.log(`Creating new PeerConnection with config=${JSON.stringify(config)}`);
   const pc = new RTCPeerConnection(config)
-  const dc = pc.createDataChannel("data")
   pc.onicecandidate = (c) => console.debug(c)
 //  pc.onicegatheringstatechange = gatheringStateChange;
   pc.onicecandidateerror = (c) => console.debug(c);
@@ -48,7 +89,7 @@ class App {
   private viewer: Player
   private game: Game
   private audioCtx?: AudioContext
-  private playfieldHistory = [new Playfield([], [])]
+  private turns: Turn[] = [new Turn(new Playfield(0, [], []), 0, [])]
   private debugMessages: any[] = []
   
   constructor(games: Game[],
@@ -68,16 +109,65 @@ class App {
     this.root = root
   }
 
-  private nextPlayfield(playfield: Playfield): Playfield {
-    this.playfieldHistory.push(playfield)
-    if (this.playfieldHistory.length > 100)
-      this.playfieldHistory.shift()
-    return playfield
+  private turnsReplay(fromIdx: number): Array<Turn> {
+    const turnsProcessed: Array<Turn> = []
+    
+    for (let turnIdx = fromIdx; turnIdx < this.turns.length; ++turnIdx) {
+      const turn = this.turns[turnIdx]
+      const [pf, msg] = turn.nextPlayfield()
+      assert(pf)
+      this.turns[turnIdx] = turn.withPlayfield(pf)
+      turnsProcessed.push(this.turns[turnIdx])
+    }
+    
+    return turnsProcessed
+  }
+  
+  private onMove(move: MoveItemsAny, localAction: boolean) {
+    const playfield = this.playfield
+    const slotsChanged = new Set<[number, string]>()
+
+    let turnsProcessed: Array<Turn>
+    
+    let turnIdx = this.turns.findIndex(t => t.sequence == move.turnSequence)
+    assert(turnIdx != -1)
+
+    if (turnIdx == this.turns.length - 1) {
+      const turn = this.turns[turnIdx].withMove(move)
+      const [pf, msg] = turn.nextPlayfield()
+      assert(pf)
+      this.turns[turnIdx] = turn
+      this.turns[turnIdx+1] = new Turn(pf, turn.sequence + 1, [])
+      turnsProcessed = [turn]
+      if (this.turns.length > 100)
+        this.turns.shift()
+    } else {
+      this.turns[turnIdx] = this.turns[turnIdx].withMove(move)
+      turnsProcessed = this.turnsReplay(turnIdx)
+    }
+
+    for (const turn of turnsProcessed) {
+      for (const move of turn.moves) {
+        const changed: Array<[number, string]> = move.slotsChanged.map(s => [s.id, s.idCnt])
+        changed.forEach(s => slotsChanged.add(s))
+      }
+    }
+    
+    this.notifierSlot.slotsUpdate(playfield, this.playfield, slotsChanged, localAction)
+    this.notifierSlot.eventTarget.dispatchEvent(new EventPlayfieldChange(playfield, this.playfield))
+
+    if (localAction) {
+      this.connections.broadcast({move: move.serialize()})
+    }
   }
 
+  private get turnCurrent() {
+    assert(this.turns.length > 0)
+    return this.turns[this.turns.length - 1]
+  }
+  
   private get playfield() {
-    assert(this.playfieldHistory.length > 0)
-    return this.playfieldHistory[this.playfieldHistory.length - 1]
+    return this.turnCurrent.playfield
   }
   
   audioCtxGet(): AudioContext|undefined {
@@ -88,21 +178,17 @@ class App {
   }
 
   init() {
-    this.notifierSlot.registerSlotUpdate(this.preSlotUpdateCard.bind(this))
-    this.notifierSlot.registerSlotUpdateChip(this.preSlotUpdateChip.bind(this))
+    this.notifierSlot.registerPreSlotUpdate(this.preSlotUpdate.bind(this))
     this.notifierSlot.registerPostSlotUpdate(this.postSlotUpdate.bind(this))
-
-    this.notifierSlot.playfield.addEventListener(
-      "playfieldchange",
-      (e: EventPlayfieldChange) => this.nextPlayfield(e.playfield_)
-    )
+    
+    this.notifierSlot.eventTarget.addEventListener("gamemove", (e: EventMove) => this.onMove(e.move, e.localAction))
   }
 
   rootGet(): UISlotRoot {
     return this.root
   }
   
-  newGame(idGame: string, playfield?: Playfield, viewerId?: string) {
+  newGame(idGame: string, turns?: Turn[], viewerId?: string) {
     const game = this.games.find(g => g.id == idGame)
     if (!game) {
       throw new Error("No such game " + idGame)
@@ -110,7 +196,7 @@ class App {
 
     this.game = game
     this.maxPlayers = Math.min(this.maxPlayers, this.game.playersActive().length)
-    this.playfieldHistory = [playfield ?? this.game.playfield(this.maxPlayers)]
+    this.turns = turns ?? [new Turn(this.game.playfield(this.maxPlayers), 0, [])]
     this.viewerSet(
       this.game.players.find(p => p.id == viewerId) ??
         this.game.players.find(p => p.id == this.viewer?.id) ??
@@ -121,7 +207,7 @@ class App {
   }
 
   newHand() {
-    this.playfieldHistory = [this.game.playfieldNewHand(this.maxPlayers, this.playfield)]
+    this.turns = [new Turn(this.game.playfieldNewHand(this.maxPlayers, this.playfield), 0, [])]
     this.uiCreate()
   }
   
@@ -182,30 +268,14 @@ class App {
     return this.game
   }
 
-  preSlotUpdateCard(move: MoveCards, localAction: boolean): [UIMovable, Vector][] {
-    if (localAction) {
-      this.connections.broadcast({moveCards: { move: move.serialize() }})
-    }
-
-    return this.preSlotUpdate([move.source], localAction)
-  }
-
-  preSlotUpdateChip(move: MoveChips, localAction: boolean): [UIMovable, Vector][] {
-    if (localAction) {
-      this.connections.broadcast({moveChips: { move: move.serialize() }})
-    }
-
-    return this.preSlotUpdate([move.source], localAction)
-  }
-  
   private preSlotUpdate(slotsOld: Slot[], localAction: boolean): [UIMovable, Vector][] {
     return this.root.uiMovablesForSlots(slotsOld).map(uim => [uim, uim.coordsAbsolute()])
   }
 
-  postSlotUpdate(slotSrc: Slot, slotDest: Slot, uimovs: [UIMovable, Vector][], localAction: boolean) {
+  postSlotUpdate(slots: Slot[], uimovs: [UIMovable, Vector][], localAction: boolean) {
     const msDuration = localAction ? 250 : 1000
     
-    const uimovs_ = this.root.uiMovablesForSlots([slotSrc, slotDest])
+    const uimovs_ = this.root.uiMovablesForSlots(slots)
     
     for (const [uimov, start] of uimovs) {
       const uimov_ = uimovs_.find(u_ => u_.is(uimov))
@@ -273,16 +343,19 @@ class App {
     }
   }
 
-  sync(peerTarget?: PeerPlayer) {
+  sync(newGame: boolean, peerTarget?: PeerPlayer) {
     const data = {
+      newGame: newGame,
       game: this.game.id,
-      playfield: this.playfield.serialize(),
+      turn: this.turnCurrent.serialize(),
       maxPlayers: this.maxPlayers
     }
     for (const peer of this.connections.peersGet()) {
       if (!peerTarget || peerTarget == peer) {
-        ++peer.consistency
-        peer.send({sync: {...data, consistency: peer.consistency}})
+        if (peer.open())
+          peer.send({sync: {...data}})
+        else
+          console.error("sync: Peer not open", peer)
       }
     }
   }
@@ -291,6 +364,7 @@ class App {
     const moves: MoveCards[] = this.playfield.containers.flatMap( cnt =>
       Array.from(cnt).map( slot =>
         new MoveCards(
+          this.turnCurrent.sequence,
           Array.from(slot).map(wc => wc.withFaceStateConscious(true, true)),
           slot,
           slot
@@ -299,7 +373,7 @@ class App {
     )
 
     for (const move of moves)
-      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withMoveCards(move), move)
+      this.notifierSlot.move(move)
   }
 
   onReceiveData(data: any, peer: PeerPlayer) {
@@ -346,14 +420,23 @@ class App {
       //demandElementById("connect-status").dispatchEvent(new EventPingBack(data.ping_back.secs))
     } else if (data.sync) {
       this.maxPlayers = data.sync.maxPlayers
-      this.newGame(data.sync.game, Playfield.fromSerialized(data.sync.playfield))
       this.onMaxPlayers(this.maxPlayers)
-      peer.send({gotSync: { consistency: data.sync.consistency }})
+
+      const turnIncoming = Turn.fromSerialized(data.sync.turn)
+      const idxExisting = this.turns.findIndex(t => t.sequence == turnIncoming.sequence)
+      if (data.sync.newGame || idxExisting == -1) {
+        this.newGame(data.sync.game, [turnIncoming])
+      } else {
+        this.turns[idxExisting] = turnIncoming
+        this.turnsReplay(idxExisting)
+        this.newGame(data.sync.game, this.turns)
+      }
+
+      peer.send({gotSync: { sequence: turnIncoming.sequence }})
     } else if (data.askSync) {
-      this.sync(peer)
+      this.sync(false, peer)
     } else if (data.gotSync) {
-      peer.consistencyReported = data.gotSync.consistency
-      console.debug("Peer got sync", peer.consistency, peer.consistencyReported)
+      console.debug("Peer got sync for sequence " + data.gotSync.sequence)
     } else if (data.peerUpdate) {
       for (const peerPlayer of data.peerUpdate.peerPlayers) {
         const peerPlayerId = peerPlayer.id
@@ -367,24 +450,14 @@ class App {
         }
       }
       this.onPeerChanged(this.connections.peersGet())
-    } else if (data.moveCards) {
-      if (!peer.consistent) {
-        console.warn("Peer inconsistent", peer.id)
-        return
+    } else if (data.move) {
+      const turn = this.turns.find(t => t.sequence == data.move.turnSequence)
+      if (turn) {
+        this.notifierSlot.move(deserializeMove(turn.playfield, data.move), false)
+      } else {
+        console.debug("Move ignored, sequence not found in turn history", data.move, this.turns)
+        peer.send({askSync: true})
       }
-      
-      const move = MoveCards.fromSerialized(this.playfield, data.moveCards.move)
-
-      this.notifierSlot.slotsUpdateCard(this.playfield, this.playfield.withMoveCards(move), move, false)
-    } else if (data.moveChips) {
-      if (!peer.consistent) {
-        console.warn("Peer inconsistent", peer.id)
-        return
-      }
-      
-      const move = MoveChips.fromSerialized(this.playfield, data.moveChips.move)
-      
-      this.notifierSlot.slotsUpdateChip(this.playfield, this.playfield.withMoveChips(move), move, false)
     } else if (data.deny) {
       errorHandler("Connection denied: " + data.deny.message)
     } else {
@@ -397,7 +470,7 @@ class App {
     assert(registrantId)
     if (peer.id < registrantId) {
       console.debug("Inconsistent playfield with authoritive id, syncing", errors)
-      this.sync(peer)
+      this.sync(false, peer)
     } else {
       peer.send({askSync: true})
       console.debug("Inconsistent playfield with non-authoritive id, surrendering", errors)
@@ -415,7 +488,7 @@ class App {
   }
 
   private onPeerReconnect(peer: PeerPlayer) {
-    this.sync(peer)
+    this.sync(true,peer)
     this.connections.broadcast({
       chern: {
         connecting: peer.id,
@@ -447,15 +520,15 @@ class App {
     return {
       game: this.game.id,
       viewer: this.viewer.id,
-      playfield: this.playfield.serialize(),
+      turn: this.turnCurrent.serialize(),
       maxPlayers: this.maxPlayers
     }
   }
 
   restore(serialized: any) {
     this.maxPlayers = serialized.maxPlayers
-    this.newGame(serialized.game, Playfield.fromSerialized(serialized.playfield), serialized.viewer)
-    this.sync()
+    this.newGame(serialized.game, [Turn.fromSerialized(serialized.turn)], serialized.viewer)
+    this.sync(true)
   }
 
   dealInteractive() {
@@ -463,8 +536,8 @@ class App {
     const step = (playfield: Playfield) => {
       const it = gen.next()
       if (!it.done) {
-        const [playfield_, updates] = it.value
-        this.notifierSlot.slotsUpdateCard(playfield, playfield_, updates)
+        const [playfield_, move] = it.value
+        this.notifierSlot.move(move)
         window.setTimeout(step.bind(this, playfield), 250)
       }
     }
@@ -906,7 +979,7 @@ function run(urlCards: string, urlCardBack: string) {
     const id = dom.demandById("peerjs-target", HTMLInputElement).value.toLowerCase()
     app.connections.connectYom("mpcard-" + id, app.gameGet().spectator())
   })
-  dom.demandById("sync").addEventListener("click", () => app.sync())
+  dom.demandById("sync").addEventListener("click", () => app.sync(true))
   dom.demandById("player-next").addEventListener("click", () => {
     const playersAvailable = app.gameGet().players.slice(0, app.maxPlayersGet()).concat([app.gameGet().spectator()])
     const startIdx = playersAvailable.indexOf(app.viewerGet())
@@ -930,7 +1003,7 @@ function run(urlCards: string, urlCardBack: string) {
     "click",
     () => {
       app.newGame(dom.demandById("game-type", HTMLSelectElement).value)
-      app.sync()
+      app.sync(true)
     }
   )
 
@@ -938,13 +1011,13 @@ function run(urlCards: string, urlCardBack: string) {
     "click",
     () => {
       app.newHand()
-      app.sync()
+      app.sync(true)
     }
   )
   
   elMaxPlayers.addEventListener(
     "change",
-    () => { app.maxPlayersSet(Number(elMaxPlayers.value)); app.sync() }
+    () => { app.maxPlayersSet(Number(elMaxPlayers.value)); app.sync(true) }
   )
   
   dom.withElement("game-type", HTMLSelectElement, (elGames) => {
@@ -958,7 +1031,7 @@ function run(urlCards: string, urlCardBack: string) {
       "change",
       () => {
         app.newGame(elGames.value)
-        app.sync()
+        app.sync(true)
       }
     )
   })
@@ -1037,13 +1110,13 @@ async function getDefaultPeerJsHost() {
     const stock = playfield.container("stock").first()
     const cntOthers = playfield.containers.filter((c: ContainerSlotCard) => c != cntStock)
     const waste = cntOthers[Math.floor(Math.random() * cntOthers.length)].first()
-    const move = new MoveCards([stock.top().withFaceUp(true)], stock, waste)
+    const move = new MoveCards(app.turnCurrent.sequence, [stock.top().withFaceUp(true)], stock, waste)
     
-    app.notifierSlot.slotsUpdateCard(app.playfield, app.playfield.withMoveCards(move), move)
+    app.notifierSlot.move(move)
 
     if (app.playfield.container("stock").isEmpty()) {
       appGlobal.newGame(appGlobal.gameGet().id)
-      appGlobal.sync()
+      appGlobal.sync(true)
     }
     
     window.setTimeout(
@@ -1064,11 +1137,11 @@ async function getDefaultPeerJsHost() {
   const cntOther = cntOthers[Math.floor(Math.random() * cntOthers.length)]
   const other = cntOther.first()
   const otherAlt = cntOthers[(cntOthers.indexOf(cntOther)+1) % cntOthers.length].first()
-  const move = new MoveCards([stock.top().withFaceUp(true)], stock, other)
+  const move = new MoveCards(app.turnCurrent.sequence, [stock.top().withFaceUp(true)], stock, other)
   
-  app.notifierSlot.slotsUpdateCard(app.playfield, app.playfield.withMoveCards(move), move)
+  app.notifierSlot.move(move)
 
-  const moveAlt = new MoveCards([stock.top().withFaceUp(true)], stock, otherAlt)
+  const moveAlt = new MoveCards(app.turnCurrent.sequence, [stock.top().withFaceUp(true)], stock, otherAlt)
 
   const peer = {
     id: 'test',
@@ -1079,7 +1152,7 @@ async function getDefaultPeerJsHost() {
   window.setTimeout(() =>
     app.onReceiveData(
       {
-        moveCards: { move: moveAlt.serialize() }
+        move: moveAlt.serialize()
       },
       peer
     ),
@@ -1097,14 +1170,13 @@ async function getDefaultPeerJsHost() {
     const cnt = cnts[Math.floor(Math.random() * cnts.length)]
     const cntOthers = playfield.containers.filter((c: ContainerSlotCard) => c != cnt)
     const other = cntOthers[Math.floor(Math.random() * cntOthers.length)]
-    const move = new MoveCards([cnt.first().top().withFaceUp(true)], cnt.first(), other.first())
+    const move = new MoveCards((app as any).turnCurrent.sequence, [cnt.first().top().withFaceUp(true)],
+                               cnt.first(), other.first())
   
-    app.notifierSlot.slotsUpdateCard(playfield, playfield.withMoveCards(move), move)
-
     const playfield_ = playfield.withMoveCards(move)
     assert(playfield.containers.reduce((agg, i) => agg + i.allItems().length, 0) == 52)
     assert(playfield_.containers.reduce((agg, i) => agg + i.allItems().length, 0) == 52)
-    app.notifierSlot.slotsUpdateCard(playfield, playfield_, move)
+    app.notifierSlot.move(move)
     window.setTimeout(work, Math.floor(Math.random() * 2000))
   }
 

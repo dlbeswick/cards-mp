@@ -124,7 +124,7 @@ abstract class UIActionable extends UIElement {
     this.selection = selection
     this._playfield = playfield
     this.notifierSlot = notifierSlot
-    this.eventsPlayfield = new dom.EventListeners(this.notifierSlot.playfield as EventTarget)
+    this.eventsPlayfield = new dom.EventListeners(this.notifierSlot.eventTarget as EventTarget)
   }
 
   init(): this {
@@ -178,8 +178,8 @@ abstract class UISlotCard extends UIActionable {
     this.eventsSlot.add(
       "slotchange",
       (e: EventSlotChange) => {
-        this.change(e.playfield_, e.playfield.container(e.idCnt).slot(e.idSlot),
-                    e.playfield_.container(e.idCnt).slot(e.idSlot))
+        this.change(e.playfield_, e.playfield.containerCard(e.idCnt).slot(e.idSlot),
+                    e.playfield_.containerCard(e.idCnt).slot(e.idSlot))
         return true
       }
     )
@@ -207,7 +207,7 @@ abstract class UISlotCard extends UIActionable {
   }
   
   slot(): SlotCard {
-    return this._playfield.container(this.idCnt).slot(this.idSlot)
+    return this._playfield.containerCard(this.idCnt).slot(this.idSlot)
   }
   
   onCardClicked(uicard: UICard) {
@@ -230,10 +230,11 @@ abstract class UISlotCard extends UIActionable {
     const move = (() => {
       if (slotSrc.is(slotDst)) {
         // case 1: same slot. Only possible outcome is move to end, otherwise drop target would be UICard.
-        return new MoveCards(cardsSrc, slotSrc, slotSrc)
+        return new MoveCards(this._playfield.sequence, cardsSrc, slotSrc, slotSrc)
       } else {
         // case 2: diff slot. Always flip face-up, unless a human player has deliberately flipped it up or down before.
         return new MoveCards(
+          this._playfield.sequence,
           cardsSrc.map(wc => cardFaceUp(slotDst.container(this._playfield).secret, wc)),
           slotSrc,
           slotDst
@@ -242,7 +243,7 @@ abstract class UISlotCard extends UIActionable {
     })()
     
     
-    this.notifierSlot.slotsUpdateCard(this._playfield, this._playfield.withMoveCards(move), move)
+    this.notifierSlot.move(move)
   }
 }
 
@@ -377,8 +378,8 @@ abstract class UIContainerSlots extends UIActionable {
     this.eventsContainer = new dom.EventListeners(this.notifierSlot.container(this.idCnt) as EventTarget)
     this.eventsContainer.add(
       "containerchange",
-      (e: EventContainerChange<SlotCard>) => {
-        this.change(e.playfield_, e.playfield.container(e.idCnt), e.playfield_.container(e.idCnt))
+      (e: EventContainerChange) => {
+        this.change(e.playfield_, e.playfield.containerCard(e.idCnt), e.playfield_.containerCard(e.idCnt))
         return true
       }
     )
@@ -422,7 +423,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
     const cardsSrc = selected.map(ui => ui.wcard)
     const slotSrc = selected[0].uislot.slot()
     const slotSrc_ = slotSrc.remove(cardsSrc)
-    const cnt: ContainerSlotCard = this._playfield.container(this.idCnt)
+    const cnt: ContainerSlotCard = this._playfield.containerCard(this.idCnt)
     const slotDst_ = new SlotCard((this.children[this.children.length-1]?.idSlot ?? -1) + 1, cnt.id,
                                   cardsSrc.map(wc => cardFaceUp(false, wc)))
 
@@ -606,7 +607,7 @@ export abstract class UIMovable extends UIElement {
     
     const finish = () => {
       this.element.style.transform = kfEnd.transform
-      if (HighDetail) {
+      if (kfEnd.zIndex) {
         this.element.style.zIndex = kfEnd.zIndex
       }
     }
@@ -750,8 +751,7 @@ export class UISlotChip extends UIActionable {
     const chipsSrc = toMove.map(ui => ui.chip)
     const slotDst = this.slot()
     if (!slotSrc.is(slotDst)) {
-      const move = new MoveChips(chipsSrc, slotSrc, slotDst)
-      this.notifierSlot.slotsUpdateChip(this._playfield, this._playfield.withMoveChips(move), move)
+      this.notifierSlot.move(new MoveChips(this._playfield.sequence, chipsSrc, slotSrc, slotDst))
     }
   }
 }
@@ -858,9 +858,10 @@ export class UICard extends UIMovable {
 
     const move = (() => {
       if (slotSrc.is(slotDst)) {
-        return new MoveCards(cardsSrc, slotSrc, slotSrc, this.wcard)
+        return new MoveCards(this.playfield().sequence, cardsSrc, slotSrc, slotSrc, this.wcard)
       } else {
         return new MoveCards(
+          this.playfield().sequence, 
           cardsSrc.map(wc => cardFaceUp(slotDst.container(this.playfield()).secret, wc)),
           slotSrc,
           slotDst,
@@ -869,7 +870,7 @@ export class UICard extends UIMovable {
       }
     })()
     
-    this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withMoveCards(move), move)
+    this.notifierSlot.move(move)
   }
   
   protected onClick() {
@@ -896,22 +897,24 @@ export class UICard extends UIMovable {
   
   private flip() {
     const move = new MoveCards(
+      this.playfield().sequence,
       [this.wcard.withFaceStateConscious(!this.wcard.faceUp, this.wcard.faceUp)],
       this.uislot.slot(),
       this.uislot.slot(),
       this.uislot.slot().next(this.wcard)
     )
-    this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withMoveCards(move), move)
+    this.notifierSlot.move(move)
   }
   
   private turn() {
     const move = new MoveCards(
+      this.playfield().sequence,
       [this.wcard.withTurned(!this.wcard.turned)],
       this.uislot.slot(),
       this.uislot.slot(),
       this.uislot.slot().next(this.wcard)
     )
-    this.notifierSlot.slotsUpdateCard(this.playfield(), this.playfield().withMoveCards(move), move)
+    this.notifierSlot.move(move)
   }
 }
 

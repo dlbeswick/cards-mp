@@ -1,26 +1,51 @@
 import { assert, assertf } from './assert.js'
 import * as array from './array.js'
 import * as dom from './dom.js' // remove this
-import { Vector } from './math.js'
 
-export class MoveItems<S extends SlotItem<T>, T extends ItemSlot> {
+export interface MoveItemsAny  {
+  readonly turnSequence: number
+  readonly items: ItemSlot[]
+  readonly source: Slot
+  readonly dest: Slot
+  readonly destBeforeItem?: ItemSlot
+  readonly slotsChanged: Slot[]
+  readonly timestamp: number
+  serialize(): any
+  isConflicting(rhs: this): boolean
+  apply(playfield: Playfield): Playfield
+}
+
+export abstract class MoveItems<S extends SlotItem<T>, T extends ItemSlot> implements MoveItemsAny {
+
+  readonly timestamp: number
+  
   constructor(
+    readonly turnSequence: number,
     readonly items: T[],
     readonly source: S,
     readonly dest: S,
     readonly destBeforeItem?: T
     // tbd: ordering? I.e. move 5 cards into deck, have them all order correctly.
-  ) {}
+  ) {
+    this.timestamp = new Date().getTime()
+  }
 
-  get slotsChanged() {
+  abstract apply(playfield: Playfield): Playfield
+  
+  isConflicting(rhs: this) {
+    return rhs.items.some(ri => this.items.some(li => li.is(ri)))
+  }
+  
+  get slotsChanged(): Slot[] {
     if (this.source.is(this.dest))
       return [this.source]
     else
       return [this.source, this.dest]
   }
-
-  serialize() {
+    
+  serialize(): any {
     return {
+      turnSequence: this.turnSequence,
       items: this.items.map(c => c.serialize()),
       source: [this.source.idCnt, this.source.id],
       dest: [this.dest.idCnt, this.dest.id],
@@ -32,11 +57,20 @@ export class MoveItems<S extends SlotItem<T>, T extends ItemSlot> {
 export class MoveCards extends MoveItems<SlotCard, WorldCard> {
   // Note: TypeScript inherits superclass constructors
   
+  apply(playfield: Playfield): Playfield {
+    return playfield.withMoveCards(this)
+  }
+  
+  serialize(): any {
+    return {...super.serialize(), type: "MoveCards" }
+  }
+  
   static fromSerialized(playfield: Playfield, s: any) {
     return new MoveCards(
+      s.turnSequence,
       s.items.map((e: any) => WorldCard.fromSerialized(e)),
-      playfield.container(s.source[0]).slot(s.source[1]),
-      playfield.container(s.dest[0]).slot(s.dest[1]),
+      playfield.containerCard(s.source[0]).slot(s.source[1]),
+      playfield.containerCard(s.dest[0]).slot(s.dest[1]),
       s.destBeforeItem ? WorldCard.fromSerialized(s.destBeforeItem) : undefined
     )
   }
@@ -45,14 +79,32 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
 export class MoveChips extends MoveItems<SlotChip, Chip> {
   // Note: TypeScript inherits superclass constructors
   
+  apply(playfield: Playfield): Playfield {
+    return playfield.withMoveChips(this)
+  }
+  
+  serialize(): any {
+    return {...super.serialize(), type: "MoveChips" }
+  }
+  
   static fromSerialized(playfield: Playfield, s: any) {
     return new MoveChips(
+      s.turnSequence,
       s.items.map((e: any) => Chip.fromSerialized(e)),
       playfield.containerChip(s.source[0]).slot(s.source[1]),
       playfield.containerChip(s.dest[0]).slot(s.dest[1]),
       s.destBeforeItem ? Chip.fromSerialized(s.destBeforeItem) : undefined
     )
   }
+}
+
+export function deserializeMove(pf: Playfield, s: any) {
+  if (s.type == "MoveCards")
+    return MoveCards.fromSerialized(pf, s)
+  else if (s.type == "MoveChips")
+    return MoveChips.fromSerialized(pf, s)
+  else
+    throw new Error("Unknown type " + s.type)
 }
 
 export function aryIdEquals<T extends Identified>(lhs: T[], rhs: T[]) {
@@ -104,7 +156,12 @@ abstract class IdentifiedVar<IdType=string> extends IdentifiedByVal<IdType> {
   }
 }
 
-abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends IdentifiedVar implements Iterable<S> {
+abstract class ContainerSlotAny extends IdentifiedVar {
+  abstract slot(id: number): Slot
+  abstract isEmpty(): boolean
+}
+
+abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends ContainerSlotAny {
 
   readonly secret: boolean
   private readonly slots: readonly S[] = []
@@ -323,7 +380,7 @@ export class SlotCard extends SlotItem<WorldCard> {
   }
 
   container(playfield: Playfield): ContainerSlotCard {
-    return playfield.container(this.idCnt)
+    return playfield.containerCard(this.idCnt)
   }
 
   findById(id: string): WorldCard|undefined {
@@ -500,7 +557,13 @@ function orderColorAlternateRankW(aceHigh: boolean, a: WorldCard, b: WorldCard):
   return orderColorAlternateRank(aceHigh, a.card, b.card)
 }
 
-export class EventContainerChange<S extends Slot> extends Event {
+export class EventMove extends Event {
+  constructor(readonly move: MoveItemsAny, readonly localAction: boolean) {
+    super('gamemove')
+  }
+}
+
+export class EventContainerChange extends Event {
   constructor(readonly playfield: Playfield, readonly playfield_: Playfield, readonly idCnt: string) {
     super('containerchange')
   }
@@ -542,14 +605,15 @@ export class EventPlayfieldChange extends Event {
   }
 }
 
-export interface EventMapNotifierSlot<S extends Slot> {
+export interface EventMapNotifierSlot {
+  "gamemove": EventMove,
   "slotchange": EventSlotChange,
-  "containerchange": EventContainerChange<S>,
+  "containerchange": EventContainerChange,
   "playfieldchange": EventPlayfieldChange
 }
 
 interface EventTargetNotifierSlot {
-  addEventListener<S extends Slot, K extends keyof EventMapNotifierSlot<S>>(type: K, listener: (ev: EventMapNotifierSlot<S>[K]) => any): void
+  addEventListener<K extends keyof EventMapNotifierSlot>(type: K, listener: (ev: EventMapNotifierSlot[K]) => any): void
   dispatchEvent(event: Event): boolean
 }
 
@@ -558,18 +622,13 @@ function newEventTarget() {
   return document.createElement('div') as EventTargetNotifierSlot
 }
 
-type FuncSlotUpdatePre<S extends SlotItem<T>, T extends ItemSlot> =
-  (move: MoveItems<S, T>, localAction: boolean) => any
-
-type FuncSlotUpdatePost = (slotSrc: Slot, slotDst: Slot, result: any, localAction: boolean) => void
-
-type ResultPreSlotUpdate = any
+type FuncSlotUpdatePre = (slotsOld: Slot[], localAction: boolean) => any
+type FuncSlotUpdatePost = (slots: Slot[], result: any, localAction: boolean) => void
 
 export class NotifierSlot {
-  readonly playfield: EventTargetNotifierSlot = newEventTarget()
+  readonly eventTarget: EventTargetNotifierSlot = newEventTarget()
   private readonly events: Map<string, EventTargetNotifierSlot> = new Map()
-  private readonly slotUpdates: FuncSlotUpdatePre<SlotCard, WorldCard>[] = []
-  private readonly slotUpdatesChip: FuncSlotUpdatePre<SlotChip, Chip>[] = []
+  private readonly preSlotUpdates: FuncSlotUpdatePre[] = []
   private readonly postSlotUpdates: FuncSlotUpdatePost[] = []
 
   container(idCnt: string) {
@@ -591,45 +650,32 @@ export class NotifierSlot {
     return result
   }
 
-  registerSlotUpdate(funcPre: FuncSlotUpdatePre<SlotCard, WorldCard>) {
-    this.slotUpdates.push(funcPre)
+  registerPreSlotUpdate(func: FuncSlotUpdatePre) {
+    this.preSlotUpdates.push(func)
   }
   
-  registerSlotUpdateChip(funcPre: FuncSlotUpdatePre<SlotChip, Chip>) {
-    this.slotUpdatesChip.push(funcPre)
-  }
-
   registerPostSlotUpdate(func: FuncSlotUpdatePost) {
     this.postSlotUpdates.push(func)
   }
 
-  slotsUpdateCard(playfield: Playfield, playfield_: Playfield, move: MoveCards, localAction=true): Playfield {
-    return this.slotsUpdate(playfield, playfield_, move, localAction,
-                            this.slotUpdates.map(f => f(move, localAction)))
+  move(move: MoveItemsAny, localAction=true) {
+    this.eventTarget.dispatchEvent(new EventMove(move, localAction))
   }
   
-  slotsUpdateChip(playfield: Playfield, playfield_: Playfield, move: MoveChips, localAction=true): Playfield {
-    return this.slotsUpdate(playfield, playfield_, move, localAction,
-                            this.slotUpdatesChip.map(f => f(move, localAction)))
-  }
-  
-  private slotsUpdate<S extends SlotItem<T>, T extends ItemSlot>(
-    playfield: Playfield, playfield_: Playfield, move: MoveItems<S, T>, localAction: boolean,
-    preSlotChangeInfo: ResultPreSlotUpdate
-  ): Playfield {
-    for (const s of move.slotsChanged) {
-      this.slot(s.idCnt, s.id).dispatchEvent(
-        new EventSlotChange(playfield, playfield_, s.idCnt, s.id)
+  slotsUpdate(playfield: Playfield, playfield_: Playfield, slotsChanged: Set<[number, string]>, localAction: boolean) {
+    const oldSlots = Array.from(slotsChanged).map(([id, idCnt]) => playfield.container(idCnt).slot(id))
+    const preSlotChangeInfo = this.preSlotUpdates.map(f => f(oldSlots, localAction))
+                                                      
+    for (const [id, idCnt] of slotsChanged) {
+      this.slot(idCnt, id).dispatchEvent(
+        new EventSlotChange(playfield, playfield_, idCnt, id)
       )
     }
       
+    const newSlots = Array.from(slotsChanged).map(([id, idCnt]) => playfield_.container(idCnt).slot(id))
     for (const result of preSlotChangeInfo)
       for (const f of this.postSlotUpdates)
-        f(move.source, move.dest, result, localAction)
-    
-    this.playfield.dispatchEvent(new EventPlayfieldChange(playfield, playfield_))
-    
-    return playfield_
+        f(newSlots, result, localAction)
   }
 }
 
@@ -678,31 +724,34 @@ class ContainerSlotChip extends ContainerSlot<SlotChip, Chip> {
 }
 
 export class Playfield {
-  constructor(readonly containers: readonly ContainerSlotCard[],
+  constructor(readonly sequence: number,
+              readonly containers: readonly ContainerSlotCard[],
               readonly containersChip: readonly ContainerSlotChip[]) {
+    assert(sequence != NaN)
   }
 
   static fromSerialized(serialized: any): Playfield {
     return new Playfield(
+      serialized.sequence,
       serialized.containers.map((s: any) => ContainerSlotCard.fromSerialized(s)),
       serialized.containersChip.map((s: any) => ContainerSlotChip.fromSerialized(s))
     )
   }
   
   serialize(): any {
-    return { containers: this.containers.map(s => s.serialize()),
+    return { sequence: this.sequence, containers: this.containers.map(s => s.serialize()),
              containersChip: this.containersChip.map(s => s.serialize()) }
   }
 
   withMoveCards(move: MoveCards): Playfield {
-    return new Playfield(this.containers.map(cnt => cnt.withMove(move)), this.containersChip)
+    return new Playfield(this.sequence + 1, this.containers.map(cnt => cnt.withMove(move)), this.containersChip)
   }
   
   withMoveChips(move: MoveChips): Playfield {
-    return new Playfield(this.containers, this.containersChip.map(cnt => cnt.withMove(move)))
+    return new Playfield(this.sequence + 1, this.containers, this.containersChip.map(cnt => cnt.withMove(move)))
   }
     
-  container(id: string): ContainerSlotCard {
+  containerCard(id: string): ContainerSlotCard {
     const cnt = this.containers.find(c => c.isId(id))
     assertf(() => cnt)
     return cnt!
@@ -710,6 +759,14 @@ export class Playfield {
 
   containerChip(id: string): ContainerSlotChip {
     const cnt = this.containersChip.find(c => c.isId(id))
+    assertf(() => cnt)
+    return cnt!
+  }
+
+  container(id: string): ContainerSlotAny {
+    let cnt: ContainerSlotAny|undefined = this.containers.find(c => c.isId(id))
+    if (!cnt)
+       cnt = this.containersChip.find(c => c.isId(id))
     assertf(() => cnt)
     return cnt!
   }
@@ -839,7 +896,6 @@ export class Connections {
           this.registrant.reconnect()
         }
       } else {
-        const registrant = this.registrant
         dom.demandById("peerjs-status").innerHTML = "Re-registering"
         this.registrant.disconnect()
         this.registrant = null
@@ -859,9 +915,9 @@ export class Connections {
     registrant.on('error', (err: any) => {
       this.registering = false
       if (err.type != 'peer-unavailable') {
-        throw new Error(`${err.type} ${err}`)
         this.registrant = null
         dom.demandById("peerjs-status").innerHTML = "Unregistered"
+        throw new Error(`${err.type} ${err}`)
       } else {
         // ?
         const idPeer = err.toString().slice("Error: Could not connect to peer ".length)
@@ -1042,7 +1098,7 @@ export abstract class Game extends IdentifiedVar {
   
   playfieldNewHand(players: number, playfieldOld: Playfield): Playfield {
     const pf = this.playfield(players)
-    return new Playfield(pf.containers, playfieldOld.containersChip)
+    return new Playfield(0, pf.containers, playfieldOld.containersChip)
   }
 
   playersActive(): Player[] {
@@ -1057,10 +1113,12 @@ export abstract class Game extends IdentifiedVar {
                       ordering: (a: WorldCard, b: WorldCard) => number) {
     for (let i = 0; i < cnt; ++i)
       for (const p of this.playersActive().slice(0, players)) {
-        const slotSrc = playfield.container('stock').slot(0)
-        const slotDst = playfield.container(p.idCnts[0]).slot(0)
+        const slotSrc = playfield.containerCard('stock').slot(0)
+        const slotDst = playfield.containerCard(p.idCnts[0]).slot(0)
         
-        const move = new MoveCards([slotSrc.top()], slotSrc, slotDst, slotDst.itemAfter(slotSrc.top(), ordering))
+        const move = new MoveCards(
+          playfield.sequence, [slotSrc.top()], slotSrc, slotDst, slotDst.itemAfter(slotSrc.top(), ordering)
+        )
 
         yield [playfield.withMoveCards(move), move] as [Playfield, MoveCards]
       }
@@ -1079,6 +1137,7 @@ export class GameGinRummy extends Game {
   
   playfield(players: number): Playfield {
     return new Playfield(
+      0,
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
        new ContainerSlotCard("waste", [new SlotCard(0, "waste")]),
@@ -1101,6 +1160,7 @@ export class GameDummy extends Game {
   
   playfield(players: number): Playfield {
     return new Playfield(
+      0,
       [new ContainerSlotCard("p0", [new SlotCard(0, "p0")]),
        new ContainerSlotCard("p1", [new SlotCard(0, "p1")]),
        new ContainerSlotCard("p0-meld", []),
@@ -1130,6 +1190,7 @@ export class GamePoker extends Game {
        ]
     
     return new Playfield(
+      0,
       this.players.map(p => new ContainerSlotCard(p.idCnts[0], [new SlotCard(0, p.idCnts[0])])).concat(
         [new ContainerSlotCard("waste", [new SlotCard(0, "waste")], true),
          new ContainerSlotCard("community", [new SlotCard(0, "community")]),
@@ -1163,6 +1224,7 @@ export class GamePokerChinese extends Game {
        ]
     
     return new Playfield(
+      0,
       this.players.flatMap(p => [
         new ContainerSlotCard(p.idCnts[0], [new SlotCard(0, p.idCnts[0])]),
         new ContainerSlotCard(p.idCnts[0] + "-show",
@@ -1188,7 +1250,7 @@ export class GameHearts extends Game {
   }
   
   deal(players: number, playfield: Playfield) {
-    const numCards = playfield.container("stock").length()
+    const numCards = playfield.containerCard("stock").length()
     return this.dealEach(players, playfield, numCards/players, orderColorAlternateRankW.bind(null, false))
   }
   
@@ -1196,6 +1258,7 @@ export class GameHearts extends Game {
     const deck = shuffled(players == 3 ? deck51NoDeuce() : deck52())
 
     return new Playfield(
+      0,
       this.
         players.
         flatMap(p => [
