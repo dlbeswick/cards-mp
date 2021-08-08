@@ -1,5 +1,4 @@
 import { assert, assertf } from './assert.js'
-import * as array from "./array.js"
 import * as dom from "./dom.js"
 import { Card, Chip, ContainerSlotCard, EventContainerChange, EventMapNotifierSlot, EventPlayfieldChange,
          EventSlotChange, MoveCards, MoveChips, NotifierSlot, Player, Playfield, Slot, SlotCard, SlotChip,
@@ -205,10 +204,6 @@ abstract class UISlotCard extends UIActionable {
     for (const child of this.children)
       child.destroy()
     this.eventsSlot.removeAll()
-  }
-
-  container(playfield=this._playfield):ContainerSlotCard {
-    return playfield.containerCardDemand(this.idCnt)
   }
   
   slot(): SlotCard {
@@ -448,7 +443,7 @@ export class UIContainerSlotsMulti extends UIContainerSlots {
           this.owner,
           this.viewer,
           playfield_,
-          slot.id,
+          slot_.id,
           this.notifierSlot,
           this.images,
           this.cardWidth,
@@ -787,18 +782,6 @@ export class UIChip extends UIMovable {
   init() {
     super.init(this.img)
   }
-
-  slot() {
-    return this.uislot.slot()
-  }
-
-  container() {
-    return this.uislot.container()
-  }
-  
-  item() {
-    return this.chip
-  }
   
   is(rhs: UIChip) {
     return this.chip.is(rhs.chip)
@@ -858,10 +841,6 @@ export class UICard extends UIMovable {
     super.init(this.img)
     return this
   }
-
-  item() { return this.wcard }
-  slot() { return this.uislot.slot() }
-  container() { return this.uislot.container() }
   
   equalsVisually(rhs: this) {
     return this.wcard.card.is(rhs.wcard.card) && this.faceUp == rhs.faceUp
