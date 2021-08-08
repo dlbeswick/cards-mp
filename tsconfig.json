@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "listEmittedFiles": true,
+    "strict": true,
+    "target": "es2019",
+    "module": "es2015",
+    "outDir": "www/js",
+    "sourceMap": true,
+    "incremental": true
+  },
+  "include": ["ts/*"],
+  "compileOnSave": false
+}
