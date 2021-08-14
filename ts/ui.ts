@@ -292,7 +292,7 @@ export class UISlotSingle extends UISlotCard {
       this.children = []
     } else {
       const card = new UICard(
-        slot_.top(), this, false, this.viewer, this.selection, playfield_, this.notifierSlot, this.images,
+        slot_.top(), this, false, this.viewer, this.selection, this.notifierSlot, this.images,
         this.cardWidth, this.cardHeight
       ).init()
       this.elCard.replaceWith(card.element)
@@ -346,7 +346,7 @@ export class UISlotSpread extends UISlotCard {
       const wcard = cards_[idx]
       const child = this.children[idx]
       if (!child || !child.wcard.equals(wcard)) {
-        const uicard = new UICard(wcard, this, true, this.viewer, this.selection, playfield_, this.notifierSlot,
+        const uicard = new UICard(wcard, this, true, this.viewer, this.selection, this.notifierSlot,
                                   this.images, this.cardWidth, this.cardHeight, this.classesCard)
         uicard.init()
         if (HighDetail) {
@@ -507,7 +507,6 @@ export abstract class UIMovable extends UIElement {
     
     function lpMouseDown(self: UIMovable) {
       const pf = self.playfield()
-      console.debug(pf)
       self.timerPress = window.setTimeout(
         () => {
           self.timerPress = undefined
@@ -810,7 +809,7 @@ export class UICard extends UIMovable {
   private readonly img: HTMLImageElement
   
   constructor(wcard: WorldCard, uislot: UISlotCard, dropTarget: boolean, viewer: Player, selection: Selection,
-              playfield: Playfield, notifierSlot: NotifierSlot, images: Images,
+              notifierSlot: NotifierSlot, images: Images,
               cardWidth: number, cardHeight: number, classesCard=["card"]) {
     super(document.createElement("div"), selection, dropTarget)
     this.wcard = wcard

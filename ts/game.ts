@@ -5,35 +5,49 @@ import * as dom from './dom.js' // remove this
 export interface MoveItemsAny  {
   readonly turnSequence: number
   readonly items: ItemSlot[]
-  readonly source: Slot
+  readonly source: Slot // tbd: change to id, dangerous during apply, only corresponds to playfield on deser
   readonly dest: Slot
   readonly destBeforeItem?: ItemSlot
   readonly slotsChanged: Slot[]
   readonly timestamp: number
   serialize(): any
-  isConflicting(rhs: this): boolean
+  isConflictingWith(rhs: this): boolean
+  resolveConflictWith(rhs: this): this[]
   apply(playfield: Playfield): Playfield
 }
 
 export abstract class MoveItems<S extends SlotItem<T>, T extends ItemSlot> implements MoveItemsAny {
 
-  readonly timestamp: number
-  
   constructor(
     readonly turnSequence: number,
     readonly items: T[],
     readonly source: S,
     readonly dest: S,
-    readonly destBeforeItem?: T
+    readonly destBeforeItem?: T,
+    readonly timestamp = new Date().getTime()
     // tbd: ordering? I.e. move 5 cards into deck, have them all order correctly.
-  ) {
-    this.timestamp = new Date().getTime()
-  }
+  ) {}
 
   abstract apply(playfield: Playfield): Playfield
+
+  // Two moves conflict if:
+  // * They use any of the same cards.
+  isConflictingWith(rhs: this) {
+    return rhs !== this
+      && rhs.items.some(ri => this.items.some(li => li.is(ri)))
+  }
   
-  isConflicting(rhs: this) {
-    return rhs.items.some(ri => this.items.some(li => li.is(ri)))
+  resolveConflictWith(rhs: this): this[] {
+    if (this === rhs) {
+      return [this]
+    } else if (this.isConflictingWith(rhs)) {
+      if (this.timestamp == rhs.timestamp)
+        return []
+      else
+        return this.timestamp < rhs.timestamp ? [this] : [rhs]
+    } else {
+      return [this, rhs]
+    }
   }
   
   get slotsChanged(): Slot[] {
@@ -57,8 +71,27 @@ export abstract class MoveItems<S extends SlotItem<T>, T extends ItemSlot> imple
 export class MoveCards extends MoveItems<SlotCard, WorldCard> {
   // Note: TypeScript inherits superclass constructors
   
+  isValid(pf: Playfield) {
+    return this.items.every(i =>
+      pf.containerCard(this.source.idCnt).slot(this.source.id).hasItem(i) &&
+      !pf.containerCard(this.dest.idCnt).slot(this.dest.id).hasItem(i)
+    )
+  }
+  
   apply(playfield: Playfield): Playfield {
-    return playfield.withMoveCards(this)
+    // "Invalid" moves are ignored. How can a move be invalid? One way:
+    // 1. Client receives a move in a previous turn that generates a conflict.
+    // 2. Conflict resolution invalidates moves in the proceeding turns.
+    // 3. Client receives a move having a cause/effect relationship with an invalidated move, from a client who hasn't
+    //    yet assimilated the conflict resolution.
+    //
+    // It would be better to compensate in some other way for this case.
+    // Re-write sequence numbers?
+    // Version turns?
+    if (this.isValid(playfield))
+      return playfield.withMoveCards(this)
+    else
+      return playfield.withTurnSequence(this.turnSequence + 1)
   }
   
   serialize(): any {
@@ -79,8 +112,18 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
 export class MoveChips extends MoveItems<SlotChip, Chip> {
   // Note: TypeScript inherits superclass constructors
   
+  isValid(pf: Playfield) {
+    return this.items.every(i =>
+      pf.containerChip(this.source.idCnt).slot(this.source.id).hasItem(i) &&
+      !pf.containerChip(this.dest.idCnt).slot(this.dest.id).hasItem(i)
+    )
+  }
+  
   apply(playfield: Playfield): Playfield {
-    return playfield.withMoveChips(this)
+    if (this.isValid(playfield))
+      return playfield.withMoveChips(this)
+    else
+      return playfield.withTurnSequence(this.turnSequence + 1)
   }
   
   serialize(): any {
@@ -541,10 +584,10 @@ function shuffled(deck: Card[]): Card[] {
 
 function orderColorAlternate(c: Card): number {
   switch (c.suit) {
-    case Suit.CLUB: return 0; break;
-    case Suit.DIAMOND: return 1; break;
-    case Suit.SPADE: return 2; break;
-    case Suit.HEART: return 3; break;
+    case Suit.CLUB: return 0
+    case Suit.DIAMOND: return 1
+    case Suit.SPADE: return 2
+    case Suit.HEART: return 3
     default: throw new Error("Unknown suit " + c.suit)
   }
 }
@@ -743,12 +786,16 @@ export class Playfield {
              containersChip: this.containersChip.map(s => s.serialize()) }
   }
 
+  withTurnSequence(turnSequence: number) {
+    return new Playfield(turnSequence, this.containers, this.containersChip)
+  }
+  
   withMoveCards(move: MoveCards): Playfield {
-    return new Playfield(this.sequence + 1, this.containers.map(cnt => cnt.withMove(move)), this.containersChip)
+    return new Playfield(move.turnSequence + 1, this.containers.map(cnt => cnt.withMove(move)), this.containersChip)
   }
   
   withMoveChips(move: MoveChips): Playfield {
-    return new Playfield(this.sequence + 1, this.containers, this.containersChip.map(cnt => cnt.withMove(move)))
+    return new Playfield(move.turnSequence + 1, this.containers, this.containersChip.map(cnt => cnt.withMove(move)))
   }
     
   containerCard(id: string): ContainerSlotCard {

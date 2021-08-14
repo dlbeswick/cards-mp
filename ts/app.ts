@@ -1,35 +1,76 @@
 import { assert, assertf } from './assert.js'
+import { distinct } from "./array.js"
 import * as dom from "./dom.js"
 import {
   Connections, ContainerSlotCard, EventContainerChange, EventMove, EventPeerUpdate, EventPlayfieldChange,
-  EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, MoveCards, MoveChips,
+  EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, MoveCards, 
   MoveItemsAny, NotifierSlot, PeerPlayer, Player, Playfield, Slot,
   deserializeMove
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
 import { Vector } from "./math.js"
-import { Selection, UICard, UIContainer, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
+import { Selection, UIContainer, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
 class Turn {
   constructor(
     readonly playfield: Playfield,
     readonly sequence: number,
-    readonly moves: MoveItemsAny[]
+    readonly moves: MoveItemsAny[],
+    readonly conflicts: MoveItemsAny[] = []
   ) {}
 
-  nextPlayfield(): [Playfield|undefined, string] {
-    let result = this.playfield
-    for (const move of this.moves) {
-      result = move.apply(result)
-    }
-    return [result, "Ok"]
+  get isEmpty() {
+    return this.moves.length == 0
+  }
+  
+  get isValid() {
+    return this.moves.some(move => this.moves.some(other => move.isConflictingWith(other))) == false
+  }
+  
+  get nextPlayfield() {
+    assert(this.isValid)
+    
+    return this.moves.reduce((pf, move) => move.apply(pf), this.playfield)
   }
 
   withMove(move: MoveItemsAny) {
     return new Turn(this.playfield, this.sequence, this.moves.concat(move))
   }
 
+  withConflictsRemoved(conflicts: MoveItemsAny[]) {
+    const noConflicts = this.moves.filter(move => !conflicts.some(c => move.isConflictingWith(c)))
+    
+    return new Turn(this.playfield, this.sequence, noConflicts, this.conflicts)
+  }
+  
+  withConflictsResolved() {
+    const f =
+      (items: MoveItemsAny[], result: MoveItemsAny[], conflicts: MoveItemsAny[]):
+      [MoveItemsAny[], MoveItemsAny[]] => {
+      
+        if (items.length == 0)
+          return [result, conflicts]
+        
+        const resultConflict = items[0].resolveConflictWith(items[1])
+        if (resultConflict.length == 0)
+          return f(items.slice(2), result.slice(2), conflicts)
+        else if (resultConflict.length == 1)
+          return f(items.slice(2),
+                   result.slice(0, result.length - items.length).concat(resultConflict.concat(items.slice(2))),
+                   conflicts.concat(items.slice(2).filter(x => x !== resultConflict[0]))
+                  )
+        else if (resultConflict.length == 2)
+          return f(items.slice(1), result, conflicts.concat(items.slice(2)))
+        else
+          assert(false)
+      }
+
+    const [resolved, conflicts] = f(this.moves, this.moves, [])
+    
+    return new Turn(this.playfield, this.sequence, resolved, conflicts)
+  }
+  
   withPlayfield(playfield: Playfield) {
     return new Turn(playfield, this.sequence, this.moves)
   }
@@ -56,25 +97,6 @@ window.onerror = errorHandler
 
 document.addEventListener("deviceready", () => {
   run("img/cards.svg", "img/back.svg")
-
-  const config: RTCConfiguration = {
-    iceServers: [],
-    iceTransportPolicy: "all",
-    iceCandidatePoolSize: 0
-  };
-
-  const offerOptions = {offerToReceiveAudio: false}
-  // Whether we gather IPv6 candidates.
-  // Whether we only gather a single set of candidates for RTP and RTCP.
-
-  console.log(`Creating new PeerConnection with config=${JSON.stringify(config)}`);
-  const pc = new RTCPeerConnection(config)
-  pc.onicecandidate = (c) => console.debug(c)
-//  pc.onicegatheringstatechange = gatheringStateChange;
-  pc.onicecandidateerror = (c) => console.debug(c);
-  pc.createOffer(
-      offerOptions
-  ).then((offer) => { console.debug(offer.sdp); pc.setLocalDescription(offer) });
 })
 
 class App {
@@ -112,39 +134,61 @@ class App {
   private turnsReplay(fromIdx: number): Array<Turn> {
     const turnsProcessed: Array<Turn> = []
     
-    for (let turnIdx = fromIdx; turnIdx < this.turns.length; ++turnIdx) {
+    for (let turnIdx = fromIdx; turnIdx < this.turns.length; ) {
       const turn = this.turns[turnIdx]
-      const [pf, msg] = turn.nextPlayfield()
-      assert(pf)
-      this.turns[turnIdx] = turn.withPlayfield(pf)
-      turnsProcessed.push(this.turns[turnIdx])
+      if (turn.isEmpty) {
+        assert(turnIdx == this.turns.length - 1)
+        ++turnIdx;
+      } else if (turn.isValid) {
+        const pf = turn.nextPlayfield
+        assert(pf)
+
+        if (turnIdx == this.turns.length - 1)
+          this.turns[turnIdx+1] = new Turn(pf, pf.sequence, [])
+        else
+          this.turns[turnIdx+1] = this.turns[turnIdx+1].withPlayfield(pf)
+
+        assert(this.turns[turnIdx+1].sequence - this.turns[turnIdx].sequence == 1)
+        
+        turnsProcessed.push(this.turns[turnIdx])
+
+        ++turnIdx;
+      } else {
+        const resolved = turn.withConflictsResolved()
+        this.turns[turnIdx] = resolved
+        
+        for (let turnIdx2 = fromIdx+1; turnIdx2 < this.turns.length; ++turnIdx2) {
+          this.turns[turnIdx2] = this.turns[turnIdx2].withConflictsRemoved(resolved.conflicts)
+        }
+      }
+
+      assert(turnIdx == this.turns.length || this.turns[turnIdx].isValid)
     }
+
+    this.turns.reduce((a,b) => { assert(b.sequence - a.sequence == 1); return b })
     
     return turnsProcessed
   }
   
   private onMove(move: MoveItemsAny, localAction: boolean) {
+    assert(this.turns.length > 0)
+    
+    if (localAction) {
+      this.connections.broadcast({move: move.serialize()})
+    }
+    
     const playfield = this.playfield
     const slotsChanged = new Set<[number, string]>()
 
     let turnsProcessed: Array<Turn>
-    
+
     let turnIdx = this.turns.findIndex(t => t.sequence == move.turnSequence)
     assert(turnIdx != -1)
 
-    if (turnIdx == this.turns.length - 1) {
-      const turn = this.turns[turnIdx].withMove(move)
-      const [pf, msg] = turn.nextPlayfield()
-      assert(pf)
-      this.turns[turnIdx] = turn
-      this.turns[turnIdx+1] = new Turn(pf, turn.sequence + 1, [])
-      turnsProcessed = [turn]
-      if (this.turns.length > 100)
-        this.turns.shift()
-    } else {
-      this.turns[turnIdx] = this.turns[turnIdx].withMove(move)
-      turnsProcessed = this.turnsReplay(turnIdx)
-    }
+    this.turns[turnIdx] = this.turns[turnIdx].withMove(move)
+    turnsProcessed = this.turnsReplay(turnIdx)
+    if (this.turns.length > 100)
+      this.turns.shift()
 
     for (const turn of turnsProcessed) {
       for (const move of turn.moves) {
@@ -155,10 +199,6 @@ class App {
     
     this.notifierSlot.slotsUpdate(playfield, this.playfield, slotsChanged, localAction)
     this.notifierSlot.eventTarget.dispatchEvent(new EventPlayfieldChange(playfield, this.playfield))
-
-    if (localAction) {
-      this.connections.broadcast({move: move.serialize()})
-    }
   }
 
   private get turnCurrent() {
@@ -455,7 +495,7 @@ class App {
       if (turn) {
         this.notifierSlot.move(deserializeMove(turn.playfield, data.move), false)
       } else {
-        console.debug("Move ignored, sequence not found in turn history", data.move, this.turns)
+        console.error("Move ignored, sequence not found in turn history", data.move, this.turns)
         peer.send({askSync: true})
       }
     } else if (data.deny) {
@@ -1139,9 +1179,9 @@ async function getDefaultPeerJsHost() {
   const otherAlt = cntOthers[(cntOthers.indexOf(cntOther)+1) % cntOthers.length].first()
   const move = new MoveCards(app.turnCurrent.sequence, [stock.top().withFaceUp(true)], stock, other)
   
-  app.notifierSlot.move(move)
-
   const moveAlt = new MoveCards(app.turnCurrent.sequence, [stock.top().withFaceUp(true)], stock, otherAlt)
+
+  app.notifierSlot.move(move)
 
   const peer = {
     id: 'test',
@@ -1150,12 +1190,7 @@ async function getDefaultPeerJsHost() {
   } as PeerPlayer
   
   window.setTimeout(() =>
-    app.onReceiveData(
-      {
-        move: moveAlt.serialize()
-      },
-      peer
-    ),
+    app.onReceiveData({ move: moveAlt.serialize() }, peer),
     1000
   )
 }
