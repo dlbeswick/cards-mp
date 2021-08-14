@@ -573,15 +573,15 @@ class App {
 
   dealInteractive() {
     const gen = this.game.deal(this.maxPlayers, this.playfield)
-    const step = (playfield: Playfield) => {
+    const step = () => {
       const it = gen.next()
       if (!it.done) {
         const [playfield_, move] = it.value
         this.notifierSlot.move(move)
-        window.setTimeout(step.bind(this, playfield), 250)
+        window.setTimeout(step, 250)
       }
     }
-    window.setTimeout(step.bind(this, this.playfield), 250)
+    window.setTimeout(step, 250)
     return false
   }
 

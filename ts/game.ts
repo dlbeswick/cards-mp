@@ -74,7 +74,8 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
   isValid(pf: Playfield) {
     return this.items.every(i =>
       pf.containerCard(this.source.idCnt).slot(this.source.id).hasItem(i) &&
-      !pf.containerCard(this.dest.idCnt).slot(this.dest.id).hasItem(i)
+      !pf.containerCard(this.dest.idCnt).slot(this.dest.id).hasItem(i) &&
+      (!this.destBeforeItem || pf.containerCard(this.dest.idCnt).slot(this.dest.id).hasItem(this.destBeforeItem))
     )
   }
   
@@ -85,7 +86,7 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
     // 3. Client receives a move having a cause/effect relationship with an invalidated move, from a client who hasn't
     //    yet assimilated the conflict resolution.
     //
-    // It would be better to compensate in some other way for this case.
+    // It would be better to detect this case in some other way, to avoid the need for this logic.
     // Re-write sequence numbers?
     // Version turns?
     if (this.isValid(playfield))
@@ -115,7 +116,8 @@ export class MoveChips extends MoveItems<SlotChip, Chip> {
   isValid(pf: Playfield) {
     return this.items.every(i =>
       pf.containerChip(this.source.idCnt).slot(this.source.id).hasItem(i) &&
-      !pf.containerChip(this.dest.idCnt).slot(this.dest.id).hasItem(i)
+      !pf.containerChip(this.dest.idCnt).slot(this.dest.id).hasItem(i) &&
+      (!this.destBeforeItem || pf.containerChip(this.dest.idCnt).slot(this.dest.id).hasItem(this.destBeforeItem))
     )
   }
   
@@ -320,10 +322,11 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
     return { ...super.serialize(), items: this.items.map(c => c.serialize()), idCnt: this.idCnt }
   }
 
-  // Assuming the slot is sorted, then returns the first item higher then the item in the given ordering, if any.
+  // Assuming the slot is sorted, then returns the first item higher then the given item by the given ordering, if
+  // any such item exists.
+  //
+  // The given item need not be in the slot.
   itemAfter(item: T, compareFn:(a: T, b: T) => number): T|undefined {
-    assert(this.hasItem(item))
-    
     return this.items.find(i => compareFn(item, i) > 0)
   }
 
@@ -1156,18 +1159,22 @@ export abstract class Game extends IdentifiedVar {
     return this.players[this.players.length-1]
   }
   
-  protected *dealEach(players: number, playfield: Playfield, cnt: number,
+  protected *dealEach(players: number, playfieldIn: Playfield, cnt: number,
                       ordering: (a: WorldCard, b: WorldCard) => number) {
+
+    let pf = playfieldIn
+    
     for (let i = 0; i < cnt; ++i)
       for (const p of this.playersActive().slice(0, players)) {
-        const slotSrc = playfield.containerCard('stock').slot(0)
-        const slotDst = playfield.containerCard(p.idCnts[0]).slot(0)
+        const slotSrc = pf.containerCard('stock').slot(0)
+        const slotDst = pf.containerCard(p.idCnts[0]).slot(0)
         
         const move = new MoveCards(
-          playfield.sequence, [slotSrc.top()], slotSrc, slotDst, slotDst.itemAfter(slotSrc.top(), ordering)
+          pf.sequence, [slotSrc.top()], slotSrc, slotDst, slotDst.itemAfter(slotSrc.top(), ordering)
         )
 
-        yield [playfield.withMoveCards(move), move] as [Playfield, MoveCards]
+        pf = pf.withMoveCards(move)
+        yield [pf, move] as [Playfield, MoveCards]
       }
   }
 }
