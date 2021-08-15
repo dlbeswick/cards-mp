@@ -1,11 +1,12 @@
 import { assert, assertf } from './assert.js'
-import { distinct } from "./array.js"
+import { distinct, remove } from "./array.js"
 import * as dom from "./dom.js"
 import {
   Connections, ContainerSlotCard, EventContainerChange, EventMove, EventPeerUpdate, EventPlayfieldChange,
   EventSlotChange, Game, GameGinRummy, GameDummy, GameHearts, GamePoker, GamePokerChinese, MoveCards, 
   MoveItemsAny, NotifierSlot, PeerPlayer, Player, Playfield, Slot,
-  deserializeMove
+  deserializeMove,
+  ConflictResolution
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
@@ -16,8 +17,8 @@ class Turn {
   constructor(
     readonly playfield: Playfield,
     readonly sequence: number,
-    readonly moves: MoveItemsAny[],
-    readonly conflicts: MoveItemsAny[] = []
+    readonly moves: readonly MoveItemsAny[],
+    readonly conflicts: readonly MoveItemsAny[] = []
   ) {}
 
   get isEmpty() {
@@ -38,7 +39,7 @@ class Turn {
     return new Turn(this.playfield, this.sequence, this.moves.concat(move))
   }
 
-  withConflictsRemoved(conflicts: MoveItemsAny[]) {
+  withConflictsRemoved(conflicts: readonly MoveItemsAny[]) {
     const noConflicts = this.moves.filter(move => !conflicts.some(c => move.isConflictingWith(c)))
     
     return new Turn(this.playfield, this.sequence, noConflicts, this.conflicts)
@@ -46,29 +47,40 @@ class Turn {
   
   withConflictsResolved() {
     const f =
-      (items: MoveItemsAny[], result: MoveItemsAny[], conflicts: MoveItemsAny[]):
-      [MoveItemsAny[], MoveItemsAny[]] => {
-      
-        if (items.length == 0)
-          return [result, conflicts]
+      (lhs: MoveItemsAny,
+       items: readonly MoveItemsAny[],
+       result: readonly MoveItemsAny[],
+       removed: readonly MoveItemsAny[]): [readonly MoveItemsAny[], readonly MoveItemsAny[]] => {
         
-        const resultConflict = items[0].resolveConflictWith(items[1])
-        if (resultConflict.length == 0)
-          return f(items.slice(2), result.slice(2), conflicts)
-        else if (resultConflict.length == 1)
-          return f(items.slice(2),
-                   result.slice(0, result.length - items.length).concat(resultConflict.concat(items.slice(2))),
-                   conflicts.concat(items.slice(2).filter(x => x !== resultConflict[0]))
-                  )
-        else if (resultConflict.length == 2)
-          return f(items.slice(1), result, conflicts.concat(items.slice(2)))
+        let tail = items
+        while (tail.length != 0) {
+          const item = tail[0]
+          
+          switch (lhs.resolveConflictWith(item)) {
+            case ConflictResolution.BOTH_STAY:
+              break;
+            case ConflictResolution.LEFT_STAY:
+              return f(lhs, remove(items, item), result, removed.concat([item]));
+            case ConflictResolution.RIGHT_STAY:
+              return f(items[0], items.slice(1), result, removed.concat([item]));
+            case ConflictResolution.BOTH_REMOVE:
+              return f(items[0], remove(items.slice(1), item), result, removed);
+            default:
+              assert(false)
+          }
+          
+          tail = items.slice(1)
+        }
+
+        if (items.length == 0)
+          return [result.concat(lhs), removed]
         else
-          assert(false)
+          return f(items[0], items.slice(1), result.concat(lhs), removed)
       }
 
-    const [resolved, conflicts] = f(this.moves, this.moves, [])
+    const [resolved, removed] = f(this.moves[0], this.moves.slice(1), [], [])
     
-    return new Turn(this.playfield, this.sequence, resolved, conflicts)
+    return new Turn(this.playfield, this.sequence, resolved, removed)
   }
   
   withPlayfield(playfield: Playfield) {
@@ -133,13 +145,18 @@ class App {
 
   private turnsReplay(fromIdx: number): Array<Turn> {
     const turnsProcessed: Array<Turn> = []
-    
-    for (let turnIdx = fromIdx; turnIdx < this.turns.length; ) {
+
+    // Process turns until reaching the head of the turn list, as long as the head is empty.
+    // If the head isn't empty, create a new empty head at the end of the list.
+    for (let turnIdx = fromIdx;
+         turnIdx < this.turns.length && !(turnIdx == this.turns.length - 1 && this.turns[turnIdx].isEmpty); ) {
+      
       const turn = this.turns[turnIdx]
-      if (turn.isEmpty) {
-        assert(turnIdx == this.turns.length - 1)
-        ++turnIdx;
-      } else if (turn.isValid) {
+      if (turn.isValid) {
+        if (turn.isEmpty && turnIdx == this.turns.length - 1) {
+          break;
+        }
+        
         const pf = turn.nextPlayfield
         assert(pf)
 
@@ -576,8 +593,7 @@ class App {
     const step = () => {
       const it = gen.next()
       if (!it.done) {
-        const [playfield_, move] = it.value
-        this.notifierSlot.move(move)
+        this.notifierSlot.move(it.value)
         window.setTimeout(step, 250)
       }
     }

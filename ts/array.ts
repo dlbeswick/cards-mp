@@ -1,10 +1,10 @@
-import { assert, assertf } from './assert.js'
+import { assert } from './assert.js'
 
-export function range(i:number) {
+export function range(i: number) {
   return Array(i).fill(undefined)
 }
 
-export function equals(lhs:any[], rhs:any[]) {
+export function equals(lhs: readonly any[], rhs: readonly any[]) {
   if (lhs.length != rhs.length)
     return false
 
@@ -15,7 +15,8 @@ export function equals(lhs:any[], rhs:any[]) {
   return true
 }
 
-export function remove(ary:any[], el:any) {
+// Remove the first occurrance of the given element from the array
+export function remove(ary: readonly any[], el: any) {
   const idx = ary.indexOf(el)
   assert(idx != -1, "OOB remove from array")
   return ary.slice(0, idx).concat(ary.slice(idx+1))
@@ -25,11 +26,15 @@ function sort_default(a:any, b:any) {
   return a - b
 }
 
-export function sorted<T>(e:Iterable<T>, sort:(a:T, b:T) => number = sort_default):T[] {
+export function sorted<T>(e: Iterable<T>, sort: (a:T, b:T) => number = sort_default): T[] {
   return Array.from(e).sort(sort)
 }
 
-export function sorted_by<T, U>(ary:readonly T[], sort_by:(a:T) => U, sort:(a:U, b:U) => number = sort_default):T[] {
+export function sorted_by<T, U>(
+  ary: readonly T[],
+  sort_by: (a:T) => U,
+  sort: (a:U, b:U) => number = sort_default): T[] {
+  
   const result =
     ary.
     map((el,i) => [sort_by(el), i] as [U, number]).
@@ -37,7 +42,11 @@ export function sorted_by<T, U>(ary:readonly T[], sort_by:(a:T) => U, sort:(a:U,
   return result.map((_, i) => ary[i])
 }
 
-export function group_by<T,G>(ary:readonly T[], group:(a:T) => G, sort:(a:G, b:G) => number = sort_default):[G,T[]][] {
+export function group_by<T,G>(
+  ary: readonly T[],
+  group: (a:T) => G,
+  sort:(a:G, b:G) => number = sort_default): [G,T[]][] {
+  
   if (ary.length == 0)
     return []
   
@@ -60,7 +69,7 @@ export function group_by<T,G>(ary:readonly T[], group:(a:T) => G, sort:(a:G, b:G
   return result
 }
 
-export function distinct<T>(ary:readonly T[], sort:(a:T, b:T) => number = sort_default):T[] {
+export function distinct<T>(ary: readonly T[], sort: (a:T, b:T) => number = sort_default): T[] {
   if (ary.length == 0)
     return []
   

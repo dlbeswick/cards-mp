@@ -2,6 +2,13 @@ import { assert, assertf } from './assert.js'
 import * as array from './array.js'
 import * as dom from './dom.js' // remove this
 
+export enum ConflictResolution {
+  LEFT_STAY,
+  RIGHT_STAY,
+  BOTH_STAY,
+  BOTH_REMOVE
+}
+
 export interface MoveItemsAny  {
   readonly turnSequence: number
   readonly items: ItemSlot[]
@@ -12,7 +19,7 @@ export interface MoveItemsAny  {
   readonly timestamp: number
   serialize(): any
   isConflictingWith(rhs: this): boolean
-  resolveConflictWith(rhs: this): this[]
+  resolveConflictWith(rhs: this): ConflictResolution
   apply(playfield: Playfield): Playfield
 }
 
@@ -37,16 +44,16 @@ export abstract class MoveItems<S extends SlotItem<T>, T extends ItemSlot> imple
       && rhs.items.some(ri => this.items.some(li => li.is(ri)))
   }
   
-  resolveConflictWith(rhs: this): this[] {
+  resolveConflictWith(rhs: this): ConflictResolution {
     if (this === rhs) {
-      return [this]
+      return ConflictResolution.BOTH_STAY
     } else if (this.isConflictingWith(rhs)) {
       if (this.timestamp == rhs.timestamp)
-        return []
+        return ConflictResolution.BOTH_REMOVE
       else
-        return this.timestamp < rhs.timestamp ? [this] : [rhs]
+        return this.timestamp < rhs.timestamp ? ConflictResolution.LEFT_STAY : ConflictResolution.RIGHT_STAY
     } else {
-      return [this, rhs]
+      return ConflictResolution.BOTH_STAY
     }
   }
   
@@ -1143,7 +1150,7 @@ export abstract class Game extends IdentifiedVar {
     ]
   }
   
-  *deal(players: number, playfield: Playfield): Generator<[Playfield, MoveCards], void> {
+  *deal(players: number, playfield: Playfield): Generator<MoveCards, void> {
   }
   
   playfieldNewHand(players: number, playfieldOld: Playfield): Playfield {
@@ -1174,7 +1181,7 @@ export abstract class Game extends IdentifiedVar {
         )
 
         pf = pf.withMoveCards(move)
-        yield [pf, move] as [Playfield, MoveCards]
+        yield move
       }
   }
 }
