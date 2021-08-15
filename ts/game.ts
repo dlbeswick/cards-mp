@@ -53,7 +53,10 @@ export abstract class MoveItems<S extends SlotItem<T>, T extends ItemSlot> imple
     // Re-write sequence numbers?
     // Version turns?
     const allNewSlotsNotExisting =
+      this.slotsNew.length == 0 ||
       this.slotsNew.every(([idCnt, id]) => !playfield.container(idCnt).hasSlot(idCnt, id))
+
+    // tbd: check "before"
     
     const moveToNewSlot = this.slotsNew.some(([idCnt, id]) => this.idDest[0] == idCnt && this.idDest[1] == id);
     
@@ -121,7 +124,7 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
     
     return this.items.every(i =>
       src.hasItem(i) &&
-      !dst.hasItem(i) &&
+      (src.is(dst) || !dst.hasItem(i)) &&
       (!this.destBeforeItem || dst.hasItem(this.destBeforeItem))
     )
   }
@@ -160,7 +163,7 @@ export class MoveChips extends MoveItems<SlotChip, Chip> {
     
     return this.items.every(i =>
       src.hasItem(i) &&
-      !dst.hasItem(i) &&
+      (src.is(dst) || !dst.hasItem(i)) &&
       (!this.destBeforeItem || dst.hasItem(this.destBeforeItem))
     )
   }
@@ -381,7 +384,7 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
   //
   // The given item need not be in the slot.
   itemAfter(item: T, compareFn:(a: T, b: T) => number): T|undefined {
-    return this.items.find(i => compareFn(item, i) > 0)
+    return this.items.find(i => compareFn(i, item) > 0)
   }
 
   // Get the item following the given one, if any.

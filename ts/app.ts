@@ -700,7 +700,7 @@ function makeUiDummy(playfield: Playfield, app: App) {
       cnt.add(
         new UIContainerSlotsMulti(opponent.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
                                   app.notifierSlot, app.images,
-                                  app.cardWidthGet(), app.cardHeightGet(), 'turn').init()
+                                  app.cardWidthGet(), app.cardHeightGet(), '', 'turn').init()
       )
     })
   )
@@ -720,7 +720,7 @@ function makeUiDummy(playfield: Playfield, app: App) {
       cnt.add(
         new UIContainerSlotsMulti(player.idCnts[0]+'-meld', app.selection, null, viewer, playfield,
                                   app.notifierSlot, app.images,
-                                  app.cardWidthGet(), app.cardHeightGet(), 'turn').init()
+                                  app.cardWidthGet(), app.cardHeightGet(), '', 'turn').init()
       )
     })
   )
