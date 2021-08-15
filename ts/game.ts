@@ -35,8 +35,30 @@ export abstract class MoveItems<S extends SlotItem<T>, T extends ItemSlot> imple
     // tbd: ordering? I.e. move 5 cards into deck, have them all order correctly.
   ) {}
 
-  abstract apply(playfield: Playfield): Playfield
+  abstract isValid(pf: Playfield): boolean
+  
+  apply(playfield: Playfield): Playfield {
+    assert(playfield.sequence == this.turnSequence)
+    
+    // "Invalid" moves are ignored. How can a move be invalid? One way:
+    // 1. Client receives a move in a previous turn that generates a conflict.
+    // 2. Conflict resolution invalidates moves in the proceeding turns.
+    // 3. Client receives a move having a cause/effect relationship with an invalidated move, from a client who hasn't
+    //    yet assimilated the conflict resolution.
+    //
+    // It would be better to detect this case in some other way, to avoid the need for this logic.
+    // Re-write sequence numbers?
+    // Version turns?
+    if (this.isValid(playfield))
+      return this.doApply(playfield)
+    else {
+      console.error("Invalid move discarded during apply", this, playfield)
+      return playfield.withTurnSequence(this.turnSequence)
+    }
+  }
 
+  protected abstract doApply(playfield: Playfield): Playfield
+  
   // Two moves conflict if:
   // * They use any of the same cards.
   isConflictingWith(rhs: this) {
@@ -86,20 +108,8 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
     )
   }
   
-  apply(playfield: Playfield): Playfield {
-    // "Invalid" moves are ignored. How can a move be invalid? One way:
-    // 1. Client receives a move in a previous turn that generates a conflict.
-    // 2. Conflict resolution invalidates moves in the proceeding turns.
-    // 3. Client receives a move having a cause/effect relationship with an invalidated move, from a client who hasn't
-    //    yet assimilated the conflict resolution.
-    //
-    // It would be better to detect this case in some other way, to avoid the need for this logic.
-    // Re-write sequence numbers?
-    // Version turns?
-    if (this.isValid(playfield))
-      return playfield.withMoveCards(this)
-    else
-      return playfield.withTurnSequence(this.turnSequence + 1)
+  protected doApply(playfield: Playfield): Playfield {
+    return playfield.withMoveCards(this)
   }
   
   serialize(): any {
@@ -128,11 +138,8 @@ export class MoveChips extends MoveItems<SlotChip, Chip> {
     )
   }
   
-  apply(playfield: Playfield): Playfield {
-    if (this.isValid(playfield))
-      return playfield.withMoveChips(this)
-    else
-      return playfield.withTurnSequence(this.turnSequence + 1)
+  protected doApply(playfield: Playfield): Playfield {
+    return playfield.withMoveChips(this)
   }
   
   serialize(): any {
@@ -801,11 +808,11 @@ export class Playfield {
   }
   
   withMoveCards(move: MoveCards): Playfield {
-    return new Playfield(move.turnSequence + 1, this.containers.map(cnt => cnt.withMove(move)), this.containersChip)
+    return new Playfield(move.turnSequence, this.containers.map(cnt => cnt.withMove(move)), this.containersChip)
   }
   
   withMoveChips(move: MoveChips): Playfield {
-    return new Playfield(move.turnSequence + 1, this.containers, this.containersChip.map(cnt => cnt.withMove(move)))
+    return new Playfield(move.turnSequence, this.containers, this.containersChip.map(cnt => cnt.withMove(move)))
   }
     
   containerCard(id: string): ContainerSlotCard {

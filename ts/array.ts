@@ -84,3 +84,19 @@ export function distinct<T>(ary: readonly T[], sort: (a:T, b:T) => number = sort
   
   return result
 }
+
+// Return a tuple of two arrays.
+// The first array contains those elements that are classed as false by the classifier.
+export function partition<T>(ary: readonly T[], classify: (a: T) => boolean): [T[], T[]] {
+  const left: T[] = []
+  const right: T[] = []
+  
+  for (const i of ary) {
+    if (classify(i))
+      right.push(i)
+    else
+      left.push(i)
+  }
+  
+  return [left, right]
+}

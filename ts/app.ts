@@ -1,5 +1,5 @@
 import { assert, assertf } from './assert.js'
-import { distinct, remove } from "./array.js"
+import { partition, remove } from "./array.js"
 import * as dom from "./dom.js"
 import {
   Connections, ContainerSlotCard, EventContainerChange, EventMove, EventPeerUpdate, EventPlayfieldChange,
@@ -10,7 +10,9 @@ import {
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
+import { itSome } from "./iterator.js"
 import { Vector } from "./math.js"
+import { setUnion } from "./set.js"
 import { Selection, UIContainer, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
 class Turn {
@@ -18,7 +20,7 @@ class Turn {
     readonly playfield: Playfield,
     readonly sequence: number,
     readonly moves: readonly MoveItemsAny[],
-    readonly conflicts: readonly MoveItemsAny[] = []
+    readonly invalidated: Set<MoveItemsAny> = new Set()
   ) {}
 
   get isEmpty() {
@@ -31,18 +33,31 @@ class Turn {
   
   get nextPlayfield() {
     assert(this.isValid)
-    
-    return this.moves.reduce((pf, move) => move.apply(pf), this.playfield)
+
+    return this.moves.
+      reduce((pf, move) => move.apply(pf), this.playfield).
+      withTurnSequence(this.playfield.sequence + 1)
   }
 
   withMove(move: MoveItemsAny) {
     return new Turn(this.playfield, this.sequence, this.moves.concat(move))
   }
 
-  withConflictsRemoved(conflicts: readonly MoveItemsAny[]) {
-    const noConflicts = this.moves.filter(move => !conflicts.some(c => move.isConflictingWith(c)))
+  withConflictsRemoved(invalidated: Set<MoveItemsAny>) {
+    const unionInvalidated = setUnion(this.invalidated, invalidated)
     
-    return new Turn(this.playfield, this.sequence, noConflicts, this.conflicts)
+    const [nonConflict, conflict] =
+      partition(
+        this.moves,
+        move => itSome(unionInvalidated, c => move.isConflictingWith(c))
+      )
+
+    return new Turn(
+      this.playfield,
+      this.sequence,
+      nonConflict,
+      setUnion(new Set(conflict), unionInvalidated)
+    )
   }
   
   withConflictsResolved() {
@@ -80,7 +95,7 @@ class Turn {
 
     const [resolved, removed] = f(this.moves[0], this.moves.slice(1), [], [])
     
-    return new Turn(this.playfield, this.sequence, resolved, removed)
+    return new Turn(this.playfield, this.sequence, resolved, new Set(removed))
   }
   
   withPlayfield(playfield: Playfield) {
@@ -175,7 +190,7 @@ class App {
         this.turns[turnIdx] = resolved
         
         for (let turnIdx2 = fromIdx+1; turnIdx2 < this.turns.length; ++turnIdx2) {
-          this.turns[turnIdx2] = this.turns[turnIdx2].withConflictsRemoved(resolved.conflicts)
+          this.turns[turnIdx2] = this.turns[turnIdx2].withConflictsRemoved(resolved.invalidated)
         }
       }
 

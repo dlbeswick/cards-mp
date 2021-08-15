@@ -3,7 +3,7 @@
     "listEmittedFiles": true,
     "strict": true,
     "target": "es2019",
-    "module": "es2015",
+    "module": "es6",
     "outDir": "www/js",
     "sourceMap": true,
     "incremental": true
