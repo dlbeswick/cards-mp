@@ -1,5 +1,5 @@
 import { assert, assertf } from './assert.js'
-import { partition, remove } from "./array.js"
+import * as array from './array.js'
 import * as dom from "./dom.js"
 import {
   Connections, ContainerSlotCard, EventContainerChange, EventMove, EventPeerUpdate, EventPlayfieldChange,
@@ -10,9 +10,9 @@ import {
 } from "./game.js"
 import errorHandler from "./error_handler.js"
 import { Images } from "./images.js"
-import { itSome } from "./iterator.js"
+import * as it from "./iterator.js"
 import { Vector } from "./math.js"
-import { setUnion } from "./set.js"
+import * as set from './set.js'
 import { Selection, UIContainer, UIContainerDiv, UIContainerFlex, UIContainerSlotsMulti, UIMovable, UISlotChip, UISlotSingle, UISlotRoot, UISlotSpread } from "./ui.js"
 
 class Turn {
@@ -44,19 +44,19 @@ class Turn {
   }
 
   withConflictsRemoved(invalidated: Set<MoveItemsAny>) {
-    const unionInvalidated = setUnion(this.invalidated, invalidated)
+    const unionInvalidated = set.union(this.invalidated, invalidated)
     
     const [nonConflict, conflict] =
-      partition(
+      array.partition(
         this.moves,
-        move => itSome(unionInvalidated, c => move.isConflictingWith(c))
+        move => it.some(unionInvalidated, c => move.isConflictingWith(c))
       )
 
     return new Turn(
       this.playfield,
       this.sequence,
       nonConflict,
-      setUnion(new Set(conflict), unionInvalidated)
+      set.union(new Set(conflict), unionInvalidated)
     )
   }
   
@@ -75,11 +75,11 @@ class Turn {
             case ConflictResolution.BOTH_STAY:
               break;
             case ConflictResolution.LEFT_STAY:
-              return f(lhs, remove(items, item), result, removed.concat([item]));
+              return f(lhs, array.remove(items, item), result, removed.concat([item]));
             case ConflictResolution.RIGHT_STAY:
               return f(items[0], items.slice(1), result, removed.concat([item]));
             case ConflictResolution.BOTH_REMOVE:
-              return f(items[0], remove(items.slice(1), item), result, removed);
+              return f(items[0], array.remove(items.slice(1), item), result, removed);
             default:
               assert(false)
           }
@@ -115,7 +115,7 @@ class Turn {
     return new Turn(
       pf,
       s.sequence,
-      s.moves.map((m: any) => deserializeMove(pf, m))
+      s.moves.map((m: any) => deserializeMove(m))
     )
   }
 }
@@ -210,7 +210,7 @@ class App {
     }
     
     const playfield = this.playfield
-    const slotsChanged = new Set<[number, string]>()
+    const slotsChanged = new Set<[string, number]>()
 
     let turnsProcessed: Array<Turn>
 
@@ -224,9 +224,14 @@ class App {
 
     for (const turn of turnsProcessed) {
       for (const move of turn.moves) {
-        const changed: Array<[number, string]> = move.slotsChanged.map(s => [s.id, s.idCnt])
-        changed.forEach(s => slotsChanged.add(s))
+        move.slotsChanged.forEach(s => slotsChanged.add(s))
       }
+    }
+
+    for (const idCnt of move.slotsNew.map(([idCnt, id]) => idCnt)) {
+      this.notifierSlot.container(idCnt).dispatchEvent(
+        new EventContainerChange(playfield, this.playfield, idCnt)
+      )
     }
     
     this.notifierSlot.slotsUpdate(playfield, this.playfield, slotsChanged, localAction)
@@ -311,8 +316,8 @@ class App {
 
     for (const cnt of this.playfield.containers) {
       for (const slot of cnt) {
-        this.notifierSlot.slot(cnt.id, slot.id).dispatchEvent(
-          new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.id)
+        this.notifierSlot.slot(cnt.id, slot.idSlot).dispatchEvent(
+          new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.idSlot)
         )
       }
       this.notifierSlot.container(cnt.id).dispatchEvent(
@@ -322,8 +327,8 @@ class App {
 
     for (const cnt of this.playfield.containersChip) {
       for (const slot of cnt) {
-        this.notifierSlot.slot(cnt.id, slot.id).dispatchEvent(
-          new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.id)
+        this.notifierSlot.slot(cnt.id, slot.idSlot).dispatchEvent(
+          new EventSlotChange(this.playfield, this.playfield, cnt.id, slot.idSlot)
         )
       }
       this.notifierSlot.container(cnt.id).dispatchEvent(
@@ -438,8 +443,8 @@ class App {
         new MoveCards(
           this.turnCurrent.sequence,
           Array.from(slot).map(wc => wc.withFaceStateConscious(true, true)),
-          slot,
-          slot
+          slot.id,
+          slot.id
         )
       )
     )
@@ -525,7 +530,7 @@ class App {
     } else if (data.move) {
       const turn = this.turns.find(t => t.sequence == data.move.turnSequence)
       if (turn) {
-        this.notifierSlot.move(deserializeMove(turn.playfield, data.move), false)
+        this.notifierSlot.move(deserializeMove(data.move), false)
       } else {
         console.error("Move ignored, sequence not found in turn history", data.move, this.turns)
         peer.send({askSync: true})
@@ -1237,7 +1242,7 @@ async function getDefaultPeerJsHost() {
     const cntOthers = playfield.containers.filter((c: ContainerSlotCard) => c != cnt)
     const other = cntOthers[Math.floor(Math.random() * cntOthers.length)]
     const move = new MoveCards((app as any).turnCurrent.sequence, [cnt.first().top().withFaceUp(true)],
-                               cnt.first(), other.first())
+                               cnt.first().id, other.first().id)
   
     const playfield_ = playfield.withMoveCards(move)
     assert(playfield.containers.reduce((agg, i) => agg + i.allItems().length, 0) == 52)

@@ -7,7 +7,7 @@ export function isSuperset<T>(set: Set<T>, subset: Set<T>) {
     return true
 }
 
-export function setUnion<T>(setA: Set<T>, setB: Set<T>) {
+export function union<T>(setA: Set<T>, setB: Set<T>) {
     let _union = new Set(setA)
     for (let elem of setB) {
         _union.add(elem)
@@ -15,7 +15,7 @@ export function setUnion<T>(setA: Set<T>, setB: Set<T>) {
     return _union
 }
 
-export function setIntersection<T>(setA: Set<T>, setB: Set<T>) {
+export function intersection<T>(setA: Set<T>, setB: Set<T>) {
     let _intersection = new Set()
     for (let elem of setB) {
         if (setA.has(elem)) {
@@ -25,7 +25,7 @@ export function setIntersection<T>(setA: Set<T>, setB: Set<T>) {
     return _intersection
 }
 
-export function setSymmetricDifference<T>(setA: Set<T>, setB: Set<T>) {
+export function symmetricDifference<T>(setA: Set<T>, setB: Set<T>) {
     let _difference = new Set(setA)
     for (let elem of setB) {
         if (_difference.has(elem)) {
@@ -37,7 +37,7 @@ export function setSymmetricDifference<T>(setA: Set<T>, setB: Set<T>) {
     return _difference
 }
 
-export function setDifference<T>(setA: Set<T>, setB: Set<T>) {
+export function difference<T>(setA: Set<T>, setB: Set<T>) {
     let _difference = new Set(setA)
     for (let elem of setB) {
         _difference.delete(elem)
