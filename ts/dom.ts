@@ -50,11 +50,13 @@ export class EventListeners {
     this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
   }
   
-  private static preventDefaultWrapper(func:(e:any) => boolean, e:any):void {
-    if (!func(e)) {
+  private static preventDefaultWrapper(func: (e:any) => boolean, e: any): boolean {
+    const result = func(e)
+    if (!result) {
       e.preventDefault()
       e.stopPropagation()
     }
+    return result
   }
 }
 

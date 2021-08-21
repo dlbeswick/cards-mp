@@ -288,6 +288,7 @@ body {
 	img {
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
+		-moz-user-select: none;
 		user-select: none;
 		transition: filter 0.1s;
 	}
@@ -302,6 +303,7 @@ body {
 	img {
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
+		-moz-user-select: none;
 		user-select: none;
 		filter: invert(0%);
 		transition: filter 0.1s;

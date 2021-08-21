@@ -510,7 +510,7 @@ export abstract class UIMovable extends UIElement {
   protected init(elementClickable: EventTarget): void {
     // Adding events to a small-width div (as with cards) works fine on Chrome and FF, but iOS ignores clicks on the
     // image if it extends past the div borders. Or perhaps it's firing pointerups? That's why a specific events target
-    // on the actual clickable is needed.
+    // on the actual clickable (image) is needed.
     this.eventsImg = new dom.EventListeners(elementClickable)
 
     function lpMouseUp(self: UIMovable) {
@@ -545,11 +545,16 @@ export abstract class UIMovable extends UIElement {
     
     // Touch events here must both allow longpress and not block scrolling. "touchstart" return true, so further
     // mouse events can't be blocked by the browser and this code must ignore them where required.
+    // 'preventDefault' in touchstart blocks scrolling.
     this.eventsImg.add("mouseup", () => !this.touch ? lpMouseUp(this) : true)
     this.eventsImg.add("mousedown", () => !this.touch ? lpMouseDown(this) : true)
     this.eventsImg.add("mouseout", () => cancel(this))
     this.eventsImg.add("touchstart",
-                       (e: TouchEvent) => { this.touch = e.touches[0]; lpMouseDown(this); return true },
+                       (e: TouchEvent) => {
+                         this.touch = e.touches[0]
+                         lpMouseDown(this)
+                         return true
+                       },
                        {passive: true})
     this.eventsImg.add(
       "touchmove",
@@ -566,7 +571,7 @@ export abstract class UIMovable extends UIElement {
 
     // Stop slots acting on mouse events that this element has acted on.
     this.eventsImg.add("click",
-                       (e) => (!(this.dropTarget || !this.selection.active() || this.selection.includes(this))))
+                       (e) => !(this.dropTarget || !this.selection.active() || this.selection.includes(this)))
 
     // Stop press-on-image context menu on mobile browsers.
     this.eventsImg.add("contextmenu", (e) => false)
@@ -906,6 +911,8 @@ export class UICard extends UIMovable {
         this.flip()
       } else if (this.uislot.actionLongPress == 'turn') {
         this.turn()
+      } else {
+        assert("Unknown longpress action", this.uislot.actionLongPress)
       }
     }
   }
