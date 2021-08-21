@@ -121,11 +121,12 @@ export class MoveCards extends MoveItems<SlotCard, WorldCard> {
   isValid(pf: Playfield) {
     const src = pf.containerCard(this.idSource[0]).slot(this.idSource[1])
     const dst = pf.containerCard(this.idDest[0]).slot(this.idDest[1])
-    
+
+    // Note: the absence of the dstBeforeItem in the target slot doesn't have to invalidate the move.
+    // TBD: use an index instead of dstBefore item
     return this.items.every(i =>
       src.hasItem(i) &&
-      (src.is(dst) || !dst.hasItem(i)) &&
-      (!this.destBeforeItem || dst.hasItem(this.destBeforeItem))
+      (src.is(dst) || !dst.hasItem(i))
     )
   }
   
@@ -163,8 +164,7 @@ export class MoveChips extends MoveItems<SlotChip, Chip> {
     
     return this.items.every(i =>
       src.hasItem(i) &&
-      (src.is(dst) || !dst.hasItem(i)) &&
-      (!this.destBeforeItem || dst.hasItem(this.destBeforeItem))
+      (src.is(dst) || !dst.hasItem(i))
     )
   }
   
@@ -311,8 +311,10 @@ abstract class ContainerSlot<S extends SlotItem<T>, T extends ItemSlot> extends 
   }
   
   withMove(move: MoveItems<S, T>): this {
+    // Create any new slots in the move for the container.
     const slotsNew = move.makeSlotsNew().filter(s => this.isId(s.idCnt))
     assert(slotsNew.every(s => !this.hasSlot(s.idCnt, s.idSlot)), "Container already has new slot")
+    
     return this.construct(this.id, this.slots.concat(slotsNew).map(s => s.withMove(move)), this.secret)
   }
 
@@ -463,8 +465,14 @@ abstract class SlotItem<T extends ItemSlot> extends Slot implements Iterable<T> 
     // The card state may have changed.
     if (this.isId(...move.idSource))
       result = result.remove(move.items)
-    if (this.isId(...move.idDest))
-      result = result.add(move.items, move.destBeforeItem)
+    if (this.isId(...move.idDest)) {
+      if (move.destBeforeItem && !this.hasItem(move.destBeforeItem)) {
+        console.error("Dest slot doesn't have beforeItem", this, move)
+        result = result.add(move.items)
+      } else {
+        result = result.add(move.items, move.destBeforeItem)
+      }
+    }
 
     return result
   }
