@@ -221,31 +221,34 @@ class App {
 
     const ctx = this.audioCtxGet()
     if (ctx) {
-      const msDuration = 250 + maxImportance * 750
-      
+      const duration = 0.25 + maxImportance * 0.75
+
       const osc = ctx.createOscillator()
       osc.type = 'triangle'
       osc.frequency.value = 100 + (100 * maxImportance * (1.0 + 0.1 * Math.random()))
-      osc.frequency.setTargetAtTime(osc.frequency.value * 0.9 + (-0.1 * maxImportance), 0, msDuration / 1000)
       const gain = ctx.createGain()
-      gain.gain.setValueAtTime(0.25 + (1 - maxImportance) * 0.25, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + msDuration/1000)
       osc.connect(gain)
       gain.connect(ctx.destination)
 
       const mod = ctx.createOscillator()
       mod.frequency.value = (5 + Math.random() * 2.5) * maxImportance
-      mod.frequency.setTargetAtTime(mod.frequency.value * 0.5, 0, msDuration / 1000)
       const gmod = ctx.createGain()
-      gmod.gain.value = 50
+      gmod.gain.value = 10
       mod.connect(gmod)
       gmod.connect(osc.frequency)
       mod.start(0)
 
       osc.onended = () => { gain.disconnect(); gmod.disconnect(); mod.stop(0) }
       
-      osc.start(0)
-      osc.stop(ctx.currentTime + msDuration / 1000)
+      const time = ctx.currentTime+0.1
+      osc.frequency.exponentialRampToValueAtTime(osc.frequency.value * (0.9 + (-0.5 * maxImportance)),
+                                                 time + duration)
+      gain.gain.setValueAtTime(0.25 + (1 - maxImportance) * 0.25, time)
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + duration)
+      gmod.gain.exponentialRampToValueAtTime(0.0001, time + duration)
+      mod.frequency.exponentialRampToValueAtTime(1, time + duration)
+      osc.start(time)
+      osc.stop(time + duration)
     }
   }
 
