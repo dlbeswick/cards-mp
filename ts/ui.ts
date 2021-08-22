@@ -486,6 +486,7 @@ export abstract class UIMovable extends UIElement {
   private eventsImg?: dom.EventListeners
   private timerPress?: number
   private touch?: Touch
+  private wasMouseDown = false
   private _isInPlay: boolean = true
   
   constructor(el: HTMLElement, selection: Selection, dropTarget: boolean) {
@@ -499,7 +500,6 @@ export abstract class UIMovable extends UIElement {
 
   isInPlay(): boolean { return this._isInPlay }
   removeFromPlay(): void {
-    this.eventsImg?.removeAll()
     if (this.selection.includes(this))
       this.selection.deselect([this])
     this._isInPlay = false
@@ -507,74 +507,98 @@ export abstract class UIMovable extends UIElement {
   
   protected abstract playfield(): Playfield
   
-  protected init(elementClickable: EventTarget): void {
-    // Adding events to a small-width div (as with cards) works fine on Chrome and FF, but iOS ignores clicks on the
-    // image if it extends past the div borders. Or perhaps it's firing pointerups? That's why a specific events target
-    // on the actual clickable (image) is needed.
-    this.eventsImg = new dom.EventListeners(elementClickable)
+  init(): this {
+    this.eventsImg = new dom.EventListeners(this.element)
 
     function lpMouseUp(self: UIMovable) {
       if (self.timerPress) {
         cancel(self)
         self.onClick()
       }
-      return false
+      return true
     }
     
     function lpMouseDown(self: UIMovable) {
       const pf = self.playfield()
       self.timerPress = window.setTimeout(
         () => {
+          cancel(self)
+//          window.alert("longpress")
           self.timerPress = undefined
-          self.touch = undefined
           self.onLongPress(pf)
         }, 500)
-      return false
+      return true
     }
     
     function cancel(self: UIMovable) {
       self.touch = undefined
+      self.wasMouseDown = false
       if (self.timerPress) {
         clearTimeout(self.timerPress)
         self.timerPress = undefined
       }
-      return false
+      return true
     }
 
     assert(this.eventsImg, "Failed to call init")
     
-    // Touch events here must both allow longpress and not block scrolling. "touchstart" return true, so further
-    // mouse events can't be blocked by the browser and this code must ignore them where required.
-    // 'preventDefault' in touchstart blocks scrolling.
-    this.eventsImg.add("mouseup", () => !this.touch ? lpMouseUp(this) : true)
-    this.eventsImg.add("mousedown", () => !this.touch ? lpMouseDown(this) : true)
+    // Touch events here must both allow longpress and not block scrolling. "touchstart" return true, so 
+    // mouse events will also then be processed by the browser. This code must ignore them where required.
+    // Using 'preventDefault' in touchstart would block scrolling.
+    // Also, note that 'mousedown/mouseup' isn't actually sent until the user lifts their finger.
+    //
+    // A weird sequence takes place on WebKit, watch out for this:
+    // 1. User longpresses.
+    // 2. Card flips.
+    // 3. New card element gets no touch events, no mouseup, mousedown, etc, just like other browsers.
+    // 4. Unlike other browsers, as soon as the user lifts their finger then "mousedown" and "mouseup" are sent,
+    //    immediately selecting the new element.
+    this.eventsImg.add("mousedown", () => {
+      if (!this.touch && this.selection.lastTouchedId != this.itemId) {
+        this.wasMouseDown = true
+        lpMouseDown(this)
+      }
+      return false
+    } )
+    
+    this.eventsImg.add("mouseup", () => {
+      if (this.wasMouseDown && this.selection.lastTouchedId != this.itemId) {
+        lpMouseUp(this)
+        this.wasMouseDown = false
+      } else {
+        this.selection.lastTouchedId = ""
+      }
+      return false
+    })
     this.eventsImg.add("mouseout", () => cancel(this))
-    this.eventsImg.add("touchstart",
-                       (e: TouchEvent) => {
-                         this.touch = e.touches[0]
-                         lpMouseDown(this)
-                         return true
-                       },
-                       {passive: true})
+    
+    this.eventsImg.add(
+      "touchstart",
+      (e: TouchEvent) => {
+        // This unfortunate variable is the fix for that weird WebKit behaviour described above.
+        this.selection.lastTouchedId = this.itemId
+        this.touch = e.touches[0]
+        lpMouseDown(this)
+      },
+      {"passive": true}
+    )
+    
     this.eventsImg.add(
       "touchmove",
       (e: TouchEvent) => {
         if (!this.touch || Math.abs(e.touches[0].screenY - this.touch.screenY) > 5)
           cancel(this)
-        return true
       },
-      {passive: true}
+      {"passive": true}
     )
     
-    this.eventsImg.add("touchcancel", () => cancel(this))
-    this.eventsImg.add("touchend", () => this.touch ? lpMouseUp(this) : false)
+    this.eventsImg.add("touchend", () => { if (this.touch) lpMouseUp(this); return false } )
 
     // Stop slots acting on mouse events that this element has acted on.
     this.eventsImg.add("click",
-                       (e) => !(this.dropTarget || !this.selection.active() || this.selection.includes(this)))
+                       () => !(this.dropTarget || !this.selection.active() || this.selection.includes(this)))
 
-    // Stop press-on-image context menu on mobile browsers.
-    this.eventsImg.add("contextmenu", (e) => false)
+    return this
   }
 
   destroy() {
@@ -668,6 +692,8 @@ export abstract class UIMovable extends UIElement {
   protected onLongPress(playfield: Playfield) {}
   
   protected onClick() {}
+
+  protected abstract get itemId(): string
 }
 
 export class UISlotChip extends UIActionable {
@@ -779,7 +805,7 @@ export class UISlotChip extends UIActionable {
 export class UIChip extends UIMovable {
   readonly chip: Chip
   readonly uislot: UISlotChip
-  readonly img: HTMLImageElement
+  readonly img: HTMLDivElement
 
   constructor(selection: Selection, chip: Chip, uislot: UISlotChip, cardWidth: number) {
     super(document.createElement("div"), selection, true)
@@ -788,19 +814,15 @@ export class UIChip extends UIMovable {
 
     this.element.classList.add("chip")
 
-    this.img = document.createElement("img")
-    this.img.width = cardWidth * 0.75
-    this.img.height = cardWidth * 0.75
-    this.img.src = "img/chips.svg#" + this.chip.value
+    this.img = document.createElement("div")
+    this.img.style.width = cardWidth * 0.75 + 'px'
+    this.img.style.height = cardWidth * 0.75 + 'px'
+    this.img.style.content = "url(img/chips.svg#" + this.chip.value + ")"
     this.element.appendChild(this.img)
   }
 
   protected playfield(): Playfield {
     return this.uislot._playfield
-  }
-  
-  init() {
-    super.init(this.img)
   }
   
   is(rhs: UIChip) {
@@ -817,6 +839,8 @@ export class UIChip extends UIMovable {
     else
       this.selection.select([this])
   }
+
+  protected get itemId() { return this.chip.id.toString() }
 }
 
 /*
@@ -827,7 +851,7 @@ export class UICard extends UIMovable {
   readonly uislot: UISlotCard
   private readonly faceUp: boolean
   private notifierSlot: NotifierSlot
-  private readonly img: HTMLImageElement
+  private readonly img: HTMLDivElement
   
   constructor(wcard: WorldCard, uislot: UISlotCard, dropTarget: boolean, viewer: Player, selection: Selection,
               notifierSlot: NotifierSlot, images: Images,
@@ -841,25 +865,20 @@ export class UICard extends UIMovable {
 
     this.img = this.faceUp ?
       images.card(wcard.card.suit, wcard.card.rank) :
-      images.cardBack.cloneNode() as HTMLImageElement
+      images.cardBack.cloneNode() as HTMLDivElement
 
     if (wcard.turned) {
       this.element.classList.add('turned')
     }
     
-    this.img.setAttribute('width', cardWidth.toString())
-    this.img.setAttribute('height', cardHeight.toString())
+    this.img.style.width = cardWidth + 'px'
+    this.img.style.height = cardHeight + 'px'
 
     this.element.appendChild(this.img)
   }
 
   protected playfield(): Playfield {
     return this.uislot._playfield
-  }
-  
-  init(): this {
-    super.init(this.img)
-    return this
   }
   
   equalsVisually(rhs: this) {
@@ -938,10 +957,13 @@ export class UICard extends UIMovable {
     )
     this.notifierSlot.move(move)
   }
+
+  protected get itemId() { return this.wcard.id.toString() }
 }
 
 export class Selection {
   private selected: readonly UIMovable[] = []
+  lastTouchedId = ""
 
   select(selects: readonly UIMovable[]) {
     const deselects = this.selected.filter(s => !selects.includes(s))

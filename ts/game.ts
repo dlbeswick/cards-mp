@@ -818,7 +818,7 @@ export class SlotChip extends SlotItem<Chip> {
   }
 
   static fromSerialized(serialized: any): SlotChip {
-    return new SlotChip(serialized.idCnt, serialized.id, serialized.items.map((c: any) => Chip.fromSerialized(c)))
+    return new SlotChip(serialized.idCnt, serialized.idSlot, serialized.items.map((c: any) => Chip.fromSerialized(c)))
   }
 
   container(playfield: Playfield): ContainerSlotChip {

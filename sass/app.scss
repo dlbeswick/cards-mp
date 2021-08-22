@@ -285,7 +285,7 @@ body {
 	-webkit-user-select: none;
 	user-select: none;
 	
-	img {
+	div {
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
 		-moz-user-select: none;
@@ -300,7 +300,7 @@ body {
 	-webkit-user-select: none;
 	user-select: none;
 	
-	img {
+	div {
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
 		-moz-user-select: none;
@@ -310,12 +310,12 @@ body {
 	}
 }
 
-.selected img {
+.selected div {
 	filter: invert(100%);
 	transition: filter 0.1s;
 }
 
-.card.turned img {
+.card.turned div {
 	-webkit-transform: rotate(-90deg) translate(20px);
 	transform: rotate(-90deg) translate(20px);
 }

@@ -20,14 +20,14 @@ export function demandById<T extends HTMLElement=HTMLElement>(id:string, klass?:
 type RefEventListener = [string, (e:Event) => void]
 
 export class EventListeners {
-  private refs:RefEventListener[] = []
-  private target:EventTarget
+  private refs: RefEventListener[] = []
+  private target: EventTarget
 
-  constructor(e:EventTarget) {
+  constructor(e: EventTarget) {
     this.target = e
   }
   
-  add<T extends Event>(typeEvent:string, handler:(e:T) => boolean,
+  add<T extends Event>(typeEvent:string, handler:(e:T) => boolean|void,
                        options:AddEventListenerOptions={}):RefEventListener {
 
     const ref:RefEventListener = [typeEvent,
@@ -50,9 +50,9 @@ export class EventListeners {
     this.refs = this.refs.splice(0, idx).concat(this.refs.splice(idx+1))
   }
   
-  private static preventDefaultWrapper(func: (e:any) => boolean, e: any): boolean {
+  private static preventDefaultWrapper(func: (e:any) => boolean|void, e: any): boolean|void {
     const result = func(e)
-    if (!result) {
+    if (result === false) {
       e.preventDefault()
       e.stopPropagation()
     }
