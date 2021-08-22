@@ -173,14 +173,18 @@ class App {
   }
 
   postSlotUpdate(slots: Slot[], uimovs: [UIMovable, Vector][], localAction: boolean) {
-    const msDuration = localAction ? 250 : 1000
-    
     const uimovs_ = this.root.uiMovablesForSlots(slots)
+
+    let maxImportance = 0
     
     for (const [uimov, start] of uimovs) {
       const uimov_ = uimovs_.find(u_ => u_.is(uimov))
       
       if (uimov_) {
+        const importance = localAction ? 0 : uimov_.locationImportance
+        maxImportance = Math.max(maxImportance, importance)
+        const msDuration = 250 + importance * 750
+        
         // UIMoveable has a presence in the new playfield.
         
         if (uimov_ != uimov) {
@@ -217,21 +221,23 @@ class App {
 
     const ctx = this.audioCtxGet()
     if (ctx) {
+      const msDuration = 250 + maxImportance * 750
+      
       const osc = ctx.createOscillator()
       osc.type = 'triangle'
-      osc.frequency.value = 200 + Math.random() * 500
-      osc.frequency.setTargetAtTime(200 + Math.random() * 500, 0, msDuration / 1000)
+      osc.frequency.value = 100 + (100 * maxImportance * (1.0 + 0.1 * Math.random()))
+      osc.frequency.setTargetAtTime(osc.frequency.value * 0.9 + (-0.1 * maxImportance), 0, msDuration / 1000)
       const gain = ctx.createGain()
-      gain.gain.value = 0.25
-      gain.gain.setTargetAtTime(0.0, ctx.currentTime + msDuration / 1000 / 2, 0.1)
+      gain.gain.setValueAtTime(0.25 + (1 - maxImportance) * 0.25, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + msDuration/1000)
       osc.connect(gain)
       gain.connect(ctx.destination)
 
       const mod = ctx.createOscillator()
-      mod.frequency.value = 10 + Math.random() * 10
-      mod.frequency.setTargetAtTime(1 + Math.random() * 5, 0, msDuration / 1000)
+      mod.frequency.value = (5 + Math.random() * 2.5) * maxImportance
+      mod.frequency.setTargetAtTime(mod.frequency.value * 0.5, 0, msDuration / 1000)
       const gmod = ctx.createGain()
-      gmod.gain.value = 100
+      gmod.gain.value = 50
       mod.connect(gmod)
       gmod.connect(osc.frequency)
       mod.start(0)

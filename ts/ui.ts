@@ -150,6 +150,8 @@ abstract class UIActionable extends UIElement {
   isViewableBy(viewer: Player) {
     return this.owner == null || viewer == this.owner
   }
+
+  get isSecret() { return this.owner != null }
   
   abstract onClick(): boolean
 
@@ -497,6 +499,12 @@ export abstract class UIMovable extends UIElement {
   
   abstract equalsVisually(rhs: this): boolean
   abstract is(rhs: this): boolean
+
+  // The relative importance of this movable's location in terms of player's interest in the game state.
+  // I.e. if in a player's secret hand, then it has a very low important as others can't see it anyway, and any moves
+  // made will be visible to the player whose hand it is.
+  // Used to determine what kinds of sounds to play when the element moves around.
+  abstract get locationImportance(): number
 
   isInPlay(): boolean { return this._isInPlay }
   removeFromPlay(): void {
@@ -855,6 +863,7 @@ export class UIChip extends UIMovable {
 
   protected get itemId() { return this.chip.id.toString() }
   protected get interactionElement() { return this.img }
+  get locationImportance() { return 0 }
 }
 
 /*
@@ -974,6 +983,12 @@ export class UICard extends UIMovable {
 
   protected get itemId() { return this.wcard.id.toString() }
   protected get interactionElement() { return this.img }
+  get locationImportance() {
+    if (this.uislot.isSecret)
+      return 0
+    else
+      return 1
+  }
 }
 
 export class Selection {
