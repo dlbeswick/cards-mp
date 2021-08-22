@@ -508,7 +508,7 @@ export abstract class UIMovable extends UIElement {
   protected abstract playfield(): Playfield
   
   init(): this {
-    this.eventsImg = new dom.EventListeners(this.element)
+    this.eventsImg = new dom.EventListeners(this.interactionElement)
 
     function lpMouseUp(self: UIMovable) {
       if (self.timerPress) {
@@ -592,7 +592,14 @@ export abstract class UIMovable extends UIElement {
       {"passive": true}
     )
     
-    this.eventsImg.add("touchend", () => { if (this.touch) lpMouseUp(this); return false } )
+    this.eventsImg.add("touchend", () => {
+      if (this.touch)
+        lpMouseUp(this)
+      
+      this.selection.lastTouchedId = ""
+
+      return false
+    })
 
     // Stop slots acting on mouse events that this element has acted on.
     this.eventsImg.add("click",
@@ -694,6 +701,12 @@ export abstract class UIMovable extends UIElement {
   protected onClick() {}
 
   protected abstract get itemId(): string
+
+  // FF and Chrome are happy to allow the user to select visible elements that extended beyond the bounds of their
+  // parent, as the cards in a stack are.
+  // WebKit seems to have problem with that, however. This method should generally return the overflowing child element
+  // to get around this issue.
+  protected abstract get interactionElement(): HTMLElement
 }
 
 export class UISlotChip extends UIActionable {
@@ -841,6 +854,7 @@ export class UIChip extends UIMovable {
   }
 
   protected get itemId() { return this.chip.id.toString() }
+  protected get interactionElement() { return this.img }
 }
 
 /*
@@ -959,6 +973,7 @@ export class UICard extends UIMovable {
   }
 
   protected get itemId() { return this.wcard.id.toString() }
+  protected get interactionElement() { return this.img }
 }
 
 export class Selection {

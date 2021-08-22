@@ -119,6 +119,12 @@ body {
 	background: #22cc33;
 	width: 100%;
 	height: 100%;
+	* {
+		-webkit-touch-callout: none;
+		-webkit-user-select: none;
+		-webkit-tap-highlight-color: rgba(0,0,0,0);
+		user-select: none;
+	}
 }
 
 .container {
@@ -257,10 +263,6 @@ body {
 	box-sizing: content-box;
   						
 	label {
-		-webkit-touch-callout: none;
-		-webkit-user-select: none;
-		user-select: none;
-
 		display: block;
 		font-family: "sans-serif";
 		background: #dddddd;
@@ -282,14 +284,7 @@ body {
 .card {
 	display: inline-block;
 	
-	-webkit-user-select: none;
-	user-select: none;
-	
 	div {
-		-webkit-touch-callout: none;
-		-webkit-user-select: none;
-		-moz-user-select: none;
-		user-select: none;
 		transition: filter 0.1s;
 	}
 }
@@ -297,14 +292,7 @@ body {
 .chip {
 	display: inline-block;
 	
-	-webkit-user-select: none;
-	user-select: none;
-	
 	div {
-		-webkit-touch-callout: none;
-		-webkit-user-select: none;
-		-moz-user-select: none;
-		user-select: none;
 		filter: invert(0%);
 		transition: filter 0.1s;
 	}
