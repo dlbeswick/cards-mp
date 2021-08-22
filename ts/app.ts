@@ -181,7 +181,7 @@ class App {
       const uimov_ = uimovs_.find(u_ => u_.is(uimov))
       
       if (uimov_) {
-        const importance = localAction ? 0 : uimov_.locationImportance
+        const importance = localAction ? 0 : uimov.locationImportance
         maxImportance = Math.max(maxImportance, importance)
         const msDuration = 250 + importance * 750
         
@@ -231,7 +231,7 @@ class App {
       gain.connect(ctx.destination)
 
       const mod = ctx.createOscillator()
-      mod.frequency.value = (5 + Math.random() * 2.5) * maxImportance
+      mod.frequency.value = 5 + Math.random() * (2.5 + maxImportance * 2)
       const gmod = ctx.createGain()
       gmod.gain.value = 10
       mod.connect(gmod)
@@ -243,7 +243,7 @@ class App {
       const time = ctx.currentTime+0.1
       osc.frequency.exponentialRampToValueAtTime(osc.frequency.value * (0.9 + (-0.5 * maxImportance)),
                                                  time + duration)
-      gain.gain.setValueAtTime(0.25 + (1 - maxImportance) * 0.25, time)
+      gain.gain.setValueAtTime(0.25, time)
       gain.gain.exponentialRampToValueAtTime(0.0001, time + duration)
       gmod.gain.exponentialRampToValueAtTime(0.0001, time + duration)
       mod.frequency.exponentialRampToValueAtTime(1, time + duration)
