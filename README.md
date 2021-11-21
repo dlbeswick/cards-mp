@@ -10,6 +10,8 @@ Many rough edges yet to be smoothed out.
 
 There's support for Gin Rummy, 500/Dummy, Chinese Poker, some regular variants of Poker, and Hearts.
 
+Play the game here: https://dlbeswick.github.io/cards/
+
 # To play and connect
 
 1. Give yourself a unique player name in the "My id" field.
