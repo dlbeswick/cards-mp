@@ -90,3 +90,5 @@ Thanks to the authors for these resources:
 `https://commons.wikimedia.org/wiki/File:English_pattern_playing_cards_deck.svg` by Dmitry Fomin
 `https://commons.wikimedia.org/wiki/File:Contemporary_playing_cards.svg` by Betzaar
 `https://commons.wikimedia.org/wiki/File:Card_back_12.svg` by David Bellot
+
+Thanks also to the authors of the open-source supporting libraries used by this project.

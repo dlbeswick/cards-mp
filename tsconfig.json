@@ -5,8 +5,9 @@
     "target": "es2019",
     "module": "es6",
     "outDir": "www/js",
-    "sourceMap": true,
-    "incremental": true
+    "incremental": true,
+    "inlineSourceMap": true,
+    "inlineSources": true,
   },
   "include": ["ts/*"],
   "compileOnSave": false

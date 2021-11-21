@@ -2,7 +2,7 @@ CORDOVA = node_modules/.bin/cordova
 TYPESCRIPT = node_modules/.bin/tsc
 SASS = sassc
 
-.PHONY: clean serve build run run-emu cordova cordova-prepare browser 
+.PHONY: clean serve build run run-emu cordova cordova-prepare browser publish
 
 browser: build
 	"$(CORDOVA)" build browser
@@ -41,3 +41,9 @@ clean:
 	rm -rf www/css
 	rm -rf www/js
 	"$(CORDOVA)" clean
+
+publish: build
+	test -d "$(PUBLISH_DIR)" || { echo "Non-existent PUBLISH_DIR"; exit 1; }
+	rm -r "$(PUBLISH_DIR)/cards" || true
+	cp -r platforms/browser/www "$(PUBLISH_DIR)/cards"
+	find "$(PUBLISH_DIR)/cards" -name '*.tsbuildinfo' -delete
