@@ -50,7 +50,7 @@ Connect using your browser (on PC, phone, tablet, etc.) to the address that appe
 
 # A note on PeerJS server
 
-This handy project is there to satisfy WebRTC requirements and act as a STUN server to negotiate client firewalls. Once the negotiation is done, all communication is peer-to-peer. Unfortunately this is also required when all clients are on the same local network, because of the way that WebRTC operates.
+This handy project is there to satisfy WebRTC requirements. Once the negotiation is done, all communication is peer-to-peer. Unfortunately this is also required when all clients are on the same local network, because of the way that WebRTC operates.
 
 # Running your own PeerJS server
 
