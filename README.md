@@ -86,6 +86,7 @@ ExecStart=/usr/local/bin/peerjs --port 9000
 * Instructions for each game should be included.
 * Should have an easy way to keep scores.
 * Better error recovering in general is needed.
+* No use of STUN/TURN servers, so play on the same network only for now.
 
 # Credits
 
