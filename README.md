@@ -41,8 +41,10 @@ If the worst should happen due to bugs and cards stop responding to input or you
 1. Install Make (i.e. via `apt install build-essential`).
 1. Then run:
 
-    $ npm install
-    $ make serve
+```
+$ npm install
+$ make serve
+```
 
 Connect using your browser (on PC, phone, tablet, etc.) to the address that appears when you run `make serve`.
 
